@@ -1,7 +1,9 @@
 # skins (dsh-skins) — modular DSH Web skins
 
-Every selectable skin is an independent first-level directory under
-`src/client/skins/`: add or remove it as a unit. There is no family/shared visual
+Every custom skin is an independent first-level directory under
+`src/client/skins/`: add or remove it as a unit. `default` is a built-in virtual
+choice that retracts every custom override and restores the official DeepSeek
+Harness interface. There is no family/shared visual
 layer and skins do not import one another. esbuild bundles the modular source into
 the single `lib/client.js` expected by DSH. The generated bundle is committed and
 there is no `prepare` script, so GitHub installers do not build anything.
@@ -10,6 +12,7 @@ there is no `prepare` script, so GitHub installers do not build anything.
 
 | id | directory | status | description |
 |---|---|---|---|
+| `default` | — | built-in | Official DeepSeek Harness interface; keeps the switcher and appearance controls |
 | `openbmc` | `src/client/skins/openbmc-harness/` | production | OpenBMC identity, ice-blue palettes and storm-wing artwork |
 | `uefi-harness` | `src/client/skins/uefi-harness/` | **dummy** | self-contained UEFI chip mark, violet palettes and gradient background |
 
@@ -19,15 +22,17 @@ The sidebar **Skin Switcher** above Plugin Plaza has two sections:
 
 1. **Appearance** — Light, Dark, System; uses the official theme service and
    stays synchronized with Settings → General → Appearance.
-2. **Choose Skin** — OpenBMC Harness and UEFI Harness; applies immediately,
-   persists the selection, and keeps the popover open for continued preview.
+2. **Choose Skin** — **DeepSeek Harness (Default)** comes first and restores the
+   official interface; OpenBMC Harness and UEFI Harness follow. Selection applies
+   immediately, persists, and keeps the popover open. First load still uses OpenBMC.
 
 Debug API:
 
 ```js
 __DSH_SKINS__.list();
+__DSH_SKINS__.select("default");      // restore the official interface
 __DSH_SKINS__.select("uefi-harness");
-__DSH_SKINS__.active();
+__DSH_SKINS__.active();               // includes the virtual default id
 ```
 
 ## Layout

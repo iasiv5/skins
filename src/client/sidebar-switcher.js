@@ -4,6 +4,8 @@ const DICTS = {
   zh: {
     "skins.switch": "皮肤切换",
     "skins.title": "选择皮肤",
+    "skins.default.label": "DeepSeek Harness（默认）",
+    "skins.default.description": "不启用额外皮肤，使用官方界面",
     "appearance.title": "外观配色",
     "appearance.light": "浅色",
     "appearance.dark": "深色",
@@ -12,6 +14,8 @@ const DICTS = {
   en: {
     "skins.switch": "Skin Switcher",
     "skins.title": "Choose Skin",
+    "skins.default.label": "DeepSeek Harness (Default)",
+    "skins.default.description": "Use the official interface without an additional skin",
     "appearance.title": "Appearance",
     "appearance.light": "Light",
     "appearance.dark": "Dark",
@@ -136,7 +140,15 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom }) {
       children: [jsx(ThemeIcon, { id: choice.id }), jsx("span", { children: tr(choice.labelKey) })],
     }, choice.id));
 
-    const skinCards = runtime.list().map((skin) => jsx("button", {
+    const choices = [
+      {
+        id: runtime.defaultId,
+        label: tr("skins.default.label"),
+        description: tr("skins.default.description"),
+      },
+      ...runtime.list(),
+    ];
+    const skinCards = choices.map((skin) => jsx("button", {
       type: "button",
       role: "menuitemradio",
       "aria-checked": activeId === skin.id,

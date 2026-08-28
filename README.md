@@ -1,6 +1,7 @@
 # skins（dsh-skins）— 模块化 DSH Web 多皮肤插件
 
-每一个可选择的皮肤都是 `src/client/skins/` 下的独立一级目录：想加就加，想删就删；
+每一个扩展皮肤都是 `src/client/skins/` 下的独立一级目录：想加就加，想删就删；
+`default` 是撤销全部扩展覆盖、恢复 DeepSeek Harness 官方界面的内置虚拟选项。
 不存在 family/shared 视觉资源层，也不允许皮肤之间互相 import。源码用 esbuild 生成 DSH
 实际加载的单文件 `lib/client.js`，发布时提交产物且不使用 `prepare`，GitHub 安装者无需构建。
 
@@ -11,6 +12,7 @@
 
 | id | 目录 | 状态 | 说明 |
 |---|---|---|---|
+| `default` | — | 内置 | DeepSeek Harness 官方界面；撤销扩展皮肤，但保留切换入口和外观配色 |
 | `openbmc` | `src/client/skins/openbmc-harness/` | 正式 | OpenBMC 徽标、favicon、冰蓝双主题、风雷翅背景、品牌标语 |
 | `uefi-harness` | `src/client/skins/uefi-harness/` | **Dummy** | 独立 UEFI 芯片标识、紫蓝双主题、渐变背景；供未来替换成正式设计 |
 
@@ -22,7 +24,7 @@
 
 1. **外观配色**：浅色、深色、跟随系统；复用官方 theme service，与“设置 → 通用 → 外观”
    双向同步，远程访问时继续通过 localStorage fallback 持久化。
-2. **选择皮肤**：OpenBMC Harness、UEFI Harness；当前皮肤高亮，点击立即热切并持久化，弹层保持打开以便连续预览。
+2. **选择皮肤**：第一项是 **DeepSeek Harness（默认）**，用于撤销扩展皮肤并恢复官方界面；其后是 OpenBMC Harness、UEFI Harness。当前选择会高亮并持久化，弹层保持打开以便连续预览。首次加载仍默认使用 OpenBMC。
 
 侧栏收起时入口自动变成圆形调色盘图标。所有注册到 `sidebar.footer.action` 的插件入口
 都会自动纵向排列。
@@ -30,12 +32,13 @@
 调试入口：
 
 ```js
-__DSH_SKINS__.list();                 // 当前全部皮肤
+__DSH_SKINS__.list();                 // 当前全部扩展皮肤
+__DSH_SKINS__.select("default");      // 恢复 DeepSeek Harness 官方界面
 __DSH_SKINS__.select("uefi-harness"); // 热切 UEFI dummy
-__DSH_SKINS__.active();               // 当前皮肤 id
+__DSH_SKINS__.active();               // 当前选择 id（含 default）
 ```
 
-也可访问 `/?skin=uefi-harness`，选择保存在 `localStorage["dsh-skins:active"]`。
+也可访问 `/?skin=default` 或 `/?skin=uefi-harness`，选择保存在 `localStorage["dsh-skins:active"]`。
 
 ## 目录结构
 
