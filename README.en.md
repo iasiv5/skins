@@ -102,7 +102,7 @@ Restart `dsh web` after updating. Once release tags exist, install a fixed,
 reproducible version with:
 
 ```sh
-dsh plugin --profile web add github:iasiv5/skins#v0.3.0
+dsh plugin --profile web add github:iasiv5/skins#v0.3.1
 # or a reviewed 40-character commit SHA
 dsh plugin --profile web add github:iasiv5/skins#<commit-sha>
 ```

@@ -1,7 +1,7 @@
 {
   "name": "dsh-skins",
   "description": "Modular multi-skin pack for the DSH Web GUI; ships independent OpenBMC Harness and dummy UEFI Harness skins",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "homepage": "https://github.com/iasiv5/skins#readme",
   "repository": {
     "type": "git",
@@ -12,6 +12,7 @@
   },
   "keywords": [
     "dsh",
+    "dsh-plugin",
     "deepseek-harness",
     "skin",
     "theme",

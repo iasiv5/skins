@@ -157,7 +157,7 @@ dsh plugin --profile web update dsh-skins
 更新后重启 `dsh web`。正式发布 Git tag 后，也可以安装固定版本：
 
 ```sh
-dsh plugin --profile web add github:iasiv5/skins#v0.3.0
+dsh plugin --profile web add github:iasiv5/skins#v0.3.1
 # 或固定到可审计的 40 位 commit SHA：
 dsh plugin --profile web add github:iasiv5/skins#<commit-sha>
 ```
