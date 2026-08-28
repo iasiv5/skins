@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { codedError } from "./errors.js";
 
 export const PACKAGE_NAME = "dsh-skins";
 export const REPOSITORY = "iasiv5/skins";
@@ -164,19 +165,25 @@ function preserveProfileBundles(profileDir, snapshot) {
 }
 
 function validatePluginManifest(manifest, expectedVersion) {
-  if (!isRecord(manifest)) throw new Error("release package.json is missing");
-  if (manifest.name !== PACKAGE_NAME) throw new Error(`release package name must be ${PACKAGE_NAME}`);
+  if (!isRecord(manifest)) throw codedError("RELEASE_MANIFEST_MISSING", "Release 缺少 package.json");
+  if (manifest.name !== PACKAGE_NAME) {
+    throw codedError("RELEASE_NAME_MISMATCH", `Release 包名必须是 ${PACKAGE_NAME}`, { expected: PACKAGE_NAME });
+  }
   if (manifest.version !== expectedVersion) {
-    throw new Error(`release tag v${expectedVersion} does not match package version ${String(manifest.version ?? "missing")}`);
+    throw codedError(
+      "RELEASE_VERSION_MISMATCH",
+      `Release tag v${expectedVersion} 与包版本 ${String(manifest.version ?? "missing")} 不一致`,
+      { tag: expectedVersion, version: String(manifest.version ?? "missing") },
+    );
   }
   if (repositoryIdentity(manifest.repository) !== REPOSITORY.toLowerCase()) {
-    throw new Error(`release repository must be ${REPOSITORY}`);
+    throw codedError("RELEASE_REPOSITORY_MISMATCH", `Release 仓库必须是 ${REPOSITORY}`, { repository: REPOSITORY });
   }
   if (!isRecord(manifest.dsh) || !isRecord(manifest.dsh.client) || manifest.dsh.client.platform !== "web") {
-    throw new Error("release package is not a DSH Web client plugin");
+    throw codedError("RELEASE_NOT_WEB_PLUGIN", "Release 包不是 DSH Web 客户端插件");
   }
   if (!isRecord(manifest.dsh.bundle) || typeof manifest.dsh.bundle.patch !== "string") {
-    throw new Error("release package does not declare a DSH bundle patch");
+    throw codedError("RELEASE_NO_BUNDLE_PATCH", "Release 包未声明 DSH bundle patch");
   }
   return manifest;
 }
@@ -192,18 +199,29 @@ async function fetchGitHubJson(url, options = {}) {
   });
   if (!response.ok) {
     const remaining = response.headers.get("x-ratelimit-remaining");
-    const suffix = remaining === "0" ? "；GitHub 未认证请求额度已用完" : "";
-    throw new Error(`GitHub 更新检查失败（HTTP ${response.status}）${suffix}`);
+    const rateLimited = remaining === "0";
+    const suffix = rateLimited ? "；GitHub 未认证请求额度已用完" : "";
+    throw codedError(
+      rateLimited ? "GITHUB_CHECK_RATE_LIMITED" : "GITHUB_CHECK_FAILED",
+      `GitHub 更新检查失败（HTTP ${response.status}）${suffix}`,
+      { status: response.status },
+    );
   }
   return response.json();
 }
 
 export async function fetchLatestStableRelease(options = {}) {
   const raw = await (options.fetchJson ?? fetchGitHubJson)(`${GITHUB_API}/releases/latest`, options);
-  if (raw.draft === true || raw.prerelease === true) throw new Error("GitHub latest release 不是正式版本");
+  if (raw.draft === true || raw.prerelease === true) {
+    throw codedError("RELEASE_NOT_STABLE", "GitHub latest release 不是正式版本");
+  }
   const parsed = parseStableVersion(raw.tag_name);
   if (parsed === null || raw.tag_name !== parsed.tag) {
-    throw new Error(`Release tag 必须严格使用 vX.Y.Z：${String(raw.tag_name ?? "missing")}`);
+    throw codedError(
+      "RELEASE_TAG_INVALID",
+      `Release tag 必须严格使用 vX.Y.Z：${String(raw.tag_name ?? "missing")}`,
+      { tag: String(raw.tag_name ?? "missing") },
+    );
   }
   return {
     version: parsed.version,
@@ -220,23 +238,25 @@ export async function resolveReleaseArtifact(release, options = {}) {
   const ref = await fetchJson(`${GITHUB_API}/git/ref/tags/${encodeURIComponent(release.tag)}`, options);
   let object = ref.object;
   for (let depth = 0; depth < 5 && isRecord(object) && object.type === "tag"; depth += 1) {
-    if (!SHA_RE.test(String(object.sha ?? ""))) throw new Error("Release tag object 缺少有效 SHA");
+    if (!SHA_RE.test(String(object.sha ?? ""))) {
+      throw codedError("RELEASE_SHA_INVALID", "Release tag object 缺少有效 SHA");
+    }
     const annotated = await fetchJson(`${GITHUB_API}/git/tags/${object.sha}`, options);
     object = annotated.object;
   }
   if (!isRecord(object) || object.type !== "commit" || !SHA_RE.test(String(object.sha ?? ""))) {
-    throw new Error("Release tag 未解析到完整 commit SHA");
+    throw codedError("RELEASE_SHA_MISSING", "Release tag 未解析到完整 commit SHA");
   }
   const commit = String(object.sha).toLowerCase();
   const content = await fetchJson(`${GITHUB_API}/contents/package.json?ref=${commit}`, options);
   if (content.encoding !== "base64" || typeof content.content !== "string") {
-    throw new Error("Release commit 缺少可读取的 package.json");
+    throw codedError("RELEASE_PACKAGE_MISSING", "Release commit 缺少可读取的 package.json");
   }
   let manifest;
   try {
     manifest = JSON.parse(Buffer.from(content.content.replace(/\s/g, ""), "base64").toString("utf8"));
   } catch {
-    throw new Error("Release commit 的 package.json 无效");
+    throw codedError("RELEASE_PACKAGE_INVALID", "Release commit 的 package.json 无效");
   }
   validatePluginManifest(manifest, release.version);
   return { ...release, commit, manifest };
@@ -272,6 +292,9 @@ function publicOperation(operation) {
     ...(operation.error === undefined ? {} : { error: operation.error }),
     ...(operation.rolledBack === undefined ? {} : { rolledBack: operation.rolledBack }),
     ...(operation.release === undefined ? {} : { release: operation.release }),
+    ...(operation.code === undefined ? {} : { code: operation.code }),
+    ...(operation.params === undefined ? {} : { params: operation.params }),
+    ...(operation.rollbackError === undefined ? {} : { rollbackError: operation.rollbackError }),
   };
 }
 
@@ -286,10 +309,10 @@ function validateInstalledState(profileDir, artifact) {
   const profile = readProfileManifest(profileDir);
   const dependency = profile.dependencies?.[PACKAGE_NAME];
   if (typeof dependency !== "string" || !dependency.toLowerCase().includes(artifact.commit)) {
-    throw new Error("profile 未固定到已验证的更新 commit");
+    throw codedError("PROFILE_NOT_PINNED", "profile 未固定到已验证的更新 commit");
   }
   if (!Array.isArray(profile.dsh?.profile?.bundles) || !profile.dsh.profile.bundles.includes(PACKAGE_NAME)) {
-    throw new Error("profile 未注册 dsh-skins bundle");
+    throw codedError("PROFILE_BUNDLE_MISSING", "profile 未注册 dsh-skins bundle");
   }
   const installed = readInstalledManifest(profileDir);
   validatePluginManifest(installed, artifact.version);
@@ -379,10 +402,13 @@ export function createSelfUpdater(options, dependencies = {}) {
       setOperation({ phase: "checking", message: "正在重新检查最新正式版本" });
       const before = await status(true);
       if (!before.canUpdate) {
-        const reason = before.disabledReason === "development-link"
-          ? "本地 link 开发模式不会被在线更新覆盖"
-          : before.updateAvailable ? "当前安装来源不支持一键更新" : "已经是最新正式版本";
-        throw new Error(reason);
+        if (before.disabledReason === "development-link") {
+          throw codedError("UPDATE_LINK_PROTECTED", "本地 link 开发模式不会被在线更新覆盖");
+        }
+        if (before.updateAvailable) {
+          throw codedError("UPDATE_SOURCE_UNSUPPORTED", "当前安装来源不支持一键更新");
+        }
+        throw codedError("UPDATE_ALREADY_LATEST", "已经是最新正式版本");
       }
 
       setOperation({ phase: "preparing", message: "正在验证 Release 与固定提交" });
@@ -402,12 +428,12 @@ export function createSelfUpdater(options, dependencies = {}) {
       const previousManifest = readInstalledManifest(profileDir);
       previousVersion = previousManifest?.version ?? currentVersion;
       if (detectInstallSource(previousSpec).kind !== "github") {
-        throw new Error("更新开始前安装来源已变化，请重新打开皮肤切换器");
+        throw codedError("UPDATE_SOURCE_CHANGED", "更新开始前安装来源已变化，请重新打开皮肤切换器");
       }
       validatePluginManifest(previousManifest, previousVersion);
       previousCommit = resolveInstalledCommit(profileDir, previousSpec);
       if (previousCommit === null) {
-        throw new Error("无法从当前 GitHub 安装或 lockfile 解析原版本 commit，已停止更新");
+        throw codedError("UPDATE_ORIGIN_UNRESOLVED", "无法从当前 GitHub 安装或 lockfile 解析原版本 commit，已停止更新");
       }
       snapshot = captureProfileSnapshot(profileDir);
 
@@ -442,11 +468,11 @@ export function createSelfUpdater(options, dependencies = {}) {
           const restored = readInstalledManifest(profileDir);
           validatePluginManifest(restored, previousVersion);
           if (resolveInstalledCommit(profileDir, previousSpec) !== previousCommit) {
-            throw new Error("恢复后的 lockfile commit 校验失败");
+            throw codedError("ROLLBACK_LOCKFILE_MISMATCH", "恢复后的 lockfile commit 校验失败");
           }
           const restoredProfile = readProfileManifest(profileDir);
           if (!Array.isArray(restoredProfile.dsh?.profile?.bundles) || !restoredProfile.dsh.profile.bundles.includes(PACKAGE_NAME)) {
-            throw new Error("恢复后的 bundle 注册校验失败");
+            throw codedError("ROLLBACK_BUNDLE_MISSING", "恢复后的 bundle 注册校验失败");
           }
           rolledBack = true;
         } catch (rollbackFailure) {
@@ -457,7 +483,21 @@ export function createSelfUpdater(options, dependencies = {}) {
       const message = rollbackError === null
         ? original.message
         : `${original.message}；自动回滚失败：${rollbackError.message}`;
-      setOperation({ phase: "failed", message, error: message, rolledBack });
+      setOperation({
+        phase: "failed",
+        message,
+        error: message,
+        rolledBack,
+        ...(original.code === undefined ? {} : { code: original.code }),
+        ...(original.params === undefined ? {} : { params: original.params }),
+        ...(rollbackError === null ? {} : {
+          rollbackError: {
+            message: rollbackError.message,
+            ...(rollbackError.code === undefined ? {} : { code: rollbackError.code }),
+            ...(rollbackError.params === undefined ? {} : { params: rollbackError.params }),
+          },
+        }),
+      });
     } finally {
       updatePromise = null;
     }

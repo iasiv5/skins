@@ -118,7 +118,26 @@ test("restart route blocks running Agents and schedules only a safe restart", as
   const blockedResponse = responseCapture();
   await blocked.routes.get("/dsh-skins/restart")(request({ method: "POST", origin: "http://127.0.0.1:3080", url: "/dsh-skins/restart", body: "{}" }), blockedResponse);
   assert.equal(blockedResponse.status, 409);
+  assert.equal(blockedResponse.json().code, "AGENTS_RUNNING");
+  assert.equal(blockedResponse.json().params.count, 1);
   assert.equal(blocked.facts().restarts, 0);
+
+  const unavailable = harness({
+    updater: { restartRequired: true },
+    restart: { available: false },
+  });
+  const unavailableResponse = responseCapture();
+  await unavailable.routes.get("/dsh-skins/restart")(request({ method: "POST", origin: "http://127.0.0.1:3080", url: "/dsh-skins/restart", body: "{}" }), unavailableResponse);
+  assert.equal(unavailableResponse.status, 501);
+  assert.equal(unavailableResponse.json().code, "RESTART_UNAVAILABLE");
+
+  const noPending = harness({
+    updater: { restartRequired: false },
+  });
+  const noPendingResponse = responseCapture();
+  await noPending.routes.get("/dsh-skins/restart")(request({ method: "POST", origin: "http://127.0.0.1:3080", url: "/dsh-skins/restart", body: "{}" }), noPendingResponse);
+  assert.equal(noPendingResponse.status, 409);
+  assert.equal(noPendingResponse.json().code, "NO_PENDING_UPDATE");
 
   const safe = harness({ updater: { restartRequired: true } });
   const safeResponse = responseCapture();

@@ -1683,7 +1683,10 @@ export function createOpenBmcHarness(jsxRuntime) {
   return {
     id: "openbmc",
     label: "OpenBMC Harness",
-    description: "飘带徽标 · 风雷翅背景画 · 冰蓝双主题",
+    description: {
+      zh: "绶带凌风 · 风雷入画 · 缥碧盈卷",
+      en: "Ribbon mark · storm-wing backdrop · ice-blue palette",
+    },
     bodyAttr: "dshOpenbmcSkin",
     Mark: OpenBmcMark,
     Name: OpenBmcName,
@@ -1695,6 +1698,6 @@ export function createOpenBmcHarness(jsxRuntime) {
     scrimDark: SCRIM_DARK,
     placeholderLight: PLACEHOLDER_LIGHT,
     placeholderDark: PLACEHOLDER_DARK,
-    slogans: { zh: "察于未萌，治于未乱", en: "Govern before the storm" },
+    slogans: { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" },
   };
 }

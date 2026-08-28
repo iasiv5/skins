@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { codedError } from "../src/host/errors.js";
 import {
   compareStableVersions,
   createSelfUpdater,
@@ -106,7 +107,9 @@ test("release package version must exactly match the tag", async () => {
     fetchJson: async (url) => url.includes("/git/ref/")
       ? { object: { type: "commit", sha: SHA } }
       : { encoding: "base64", content: Buffer.from(JSON.stringify(pluginManifest("0.4.1"))).toString("base64") },
-  }), /does not match package version 0\.4\.1/);
+  }), (error) => error.code === "RELEASE_VERSION_MISMATCH"
+    && /与包版本 0\.4\.1 不一致/.test(error.message)
+    && error.params.version === "0.4.1");
 });
 
 test("one-hour cache persists across updater instances and invalidates on version change", async (t) => {
@@ -199,4 +202,37 @@ test("failed update restores the immutable commit behind a moving branch", async
   assert.equal(JSON.parse(readFileSync(join(fx.profileDir, "package.json"), "utf8")).dependencies["dsh-skins"], oldSpec);
   assert.equal(resolveInstalledCommit(fx.profileDir, oldSpec), oldCommit);
   assert.equal(JSON.parse(readFileSync(join(fx.packageDir, "package.json"), "utf8")).version, "0.3.1");
+});
+
+test("failed operations surface machine codes and params for client-side localization", async (t) => {
+  const oldCommit = "b".repeat(40);
+  const oldSpec = `github:${REPO}#${oldCommit}`;
+  const fx = fixture(oldSpec, "0.3.1");
+  t.after(fx.cleanup);
+  let calls = 0;
+  const updater = createSelfUpdater({ profileDir: fx.profileDir, cacheFile: fx.cacheFile, currentVersion: "0.3.1" }, {
+    fetchLatestRelease: async () => ({ version: "0.4.0", tag: "v0.4.0", htmlUrl: "https://example.test", name: "v0.4.0" }),
+    resolveReleaseArtifact: async (release) => ({ ...release, commit: SHA, manifest: pluginManifest("0.4.0") }),
+    runner: async (_profile, args) => {
+      calls += 1;
+      if (calls === 1) {
+        writeInstalled(fx, args.at(-1), "0.4.0");
+        throw codedError(
+          "UPDATE_COMMAND_FAILED",
+          "DSH 插件更新失败（exit 1）：boom",
+          { exitCode: "1", output: "boom" },
+        );
+      }
+      writeInstalled(fx, `github:${REPO}#${oldCommit}`, "0.3.1");
+    },
+  });
+  updater.startUpdate();
+  const operation = await waitForTerminal(updater);
+  assert.equal(operation.phase, "failed");
+  assert.equal(operation.code, "UPDATE_COMMAND_FAILED");
+  assert.deepEqual(operation.params, { exitCode: "1", output: "boom" });
+  assert.equal(operation.rollbackError, undefined);
+  assert.equal(operation.rolledBack, true);
+  // An uncoded error keeps the legacy shape: message passthrough, no code key.
+  assert.match(operation.error, /DSH 插件更新失败（exit 1）：boom/);
 });

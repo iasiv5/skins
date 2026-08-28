@@ -32,10 +32,32 @@ export function createSkinRuntime() {
     order.push(skin.id);
   }
 
+  /** Active UI locale ("zh"|"en"); falls back to zh before apply(). */
+  function activeLocale() {
+    try {
+      return ctx?.locale?.getLocale?.().active ?? "zh";
+    } catch {
+      return "zh";
+    }
+  }
+
+  /**
+   * Resolve a skin's localized text. Skins may declare `label`/`description`
+   * either as a locale-neutral string (brand names) or as `{ zh, en }` maps;
+   * resolution order is the active locale, then en, then zh — matching the
+   * official locale runtime's fallback chain.
+   */
+  function localizedText(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "object") return value[activeLocale()] ?? value.en ?? value.zh ?? "";
+    return String(value);
+  }
+
   function list() {
     return order.map((id) => {
       const skin = skins.get(id);
-      return { id, label: skin.label, description: skin.description };
+      return { id, label: localizedText(skin.label), description: localizedText(skin.description) };
     });
   }
 

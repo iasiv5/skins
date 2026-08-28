@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { codedError } from "./errors.js";
 
 const RELAUNCH_HELPER = String.raw`
 const { spawn } = require('node:child_process')
@@ -104,33 +105,25 @@ export async function waitForRestartSafety(agents, confirmUnknown = false) {
   const list = agentList(agents);
   if (list === null) {
     if (!confirmUnknown) {
-      const error = new Error("无法确认 Agent 运行状态，请再次确认后重启");
-      error.code = "RESTART_SAFETY_UNKNOWN";
-      throw error;
+      throw codedError("RESTART_SAFETY_UNKNOWN", "无法确认 Agent 运行状态，请再次确认后重启");
     }
     return { state: "unknown", running: null };
   }
   const running = list.filter((agent) => agent?.status === "running").length;
   if (running > 0) {
-    const error = new Error(`检测到 ${running} 个 Agent 正在运行，请等待任务结束后再重启`);
-    error.code = "AGENTS_RUNNING";
-    throw error;
+    throw codedError("AGENTS_RUNNING", `检测到 ${running} 个 Agent 正在运行，请等待任务结束后再重启`, { count: running });
   }
   await Promise.all(list.map((agent) => typeof agent?.whenIdle === "function" ? agent.whenIdle() : undefined));
   const after = agentList(agents);
   if (after === null) {
     if (!confirmUnknown) {
-      const error = new Error("复核 Agent 状态失败，请再次确认后重启");
-      error.code = "RESTART_SAFETY_UNKNOWN";
-      throw error;
+      throw codedError("RESTART_SAFETY_UNKNOWN", "复核 Agent 状态失败，请再次确认后重启");
     }
     return { state: "unknown", running: null };
   }
   const started = after.filter((agent) => agent?.status === "running").length;
   if (started > 0) {
-    const error = new Error(`检测到 ${started} 个 Agent 刚刚开始运行，请稍后再重启`);
-    error.code = "AGENTS_RUNNING";
-    throw error;
+    throw codedError("AGENTS_RUNNING", `检测到 ${started} 个 Agent 刚刚开始运行，请稍后再重启`, { count: started });
   }
   return { state: "safe", running: 0 };
 }

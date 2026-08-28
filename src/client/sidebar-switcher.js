@@ -1,87 +1,7 @@
 import { createUpdatePanel } from "./update-panel.js";
+import { DICTS, NS, formatTemplate } from "./dicts.js";
 
-const NS = "dsh-skins.ui";
 const TAG_ID = "dsh-skins/sidebar.css";
-const DICTS = {
-  zh: {
-    "skins.switch": "皮肤切换",
-    "skins.title": "选择皮肤",
-    "skins.official.label": "DeepSeek Harness（官方）",
-    "skins.official.description": "不启用额外皮肤，使用官方界面",
-    "appearance.title": "外观配色",
-    "appearance.light": "浅色",
-    "appearance.dark": "深色",
-    "appearance.system": "跟随系统",
-    "update.checking": "正在检查更新…",
-    "update.checkFailed": "暂时无法检查更新",
-    "update.retry": "重试",
-    "update.developmentCurrent": "本地开发模式 - v{current}（最新正式版 v{latest}）",
-    "update.developmentNewer": "本地开发模式 - v{current}（可更新至 v{latest}）",
-    "update.unsupported": "当前安装来源不支持在线更新",
-    "update.unsupportedHint": "仅从官方 GitHub 仓库安装的版本可以一键更新",
-    "update.available": "发现插件更新",
-    "update.versions": "v{current} → v{latest}",
-    "update.releaseNotes": "查看版本说明",
-    "update.action": "更新",
-    "update.failed": "更新失败",
-    "update.installed": "更新已安装",
-    "update.restartRequired": "v{version} 将在重启 DSH Web 后生效",
-    "update.restartNow": "立即重启",
-    "update.confirmRestart": "确认重启",
-    "update.confirmUnknown": "仍要重启",
-    "update.later": "稍后",
-    "update.deferred": "已选择稍后重启",
-    "update.restartManual": "请手动重启 DSH Web",
-    "update.restarting": "正在重启…",
-    "update.restart.blocked": "检测到 {count} 个 Agent 正在运行，请稍后重试",
-    "update.restart.unknown": "无法确认 Agent 状态；再次点击“仍要重启”表示你确认继续",
-    "update.phase.queued": "更新已排队",
-    "update.phase.checking": "正在检查最新正式版本…",
-    "update.phase.preparing": "正在验证 Release…",
-    "update.phase.installing": "正在下载安装…",
-    "update.phase.validating": "正在校验安装结果…",
-    "update.phase.rollback": "更新失败，正在恢复原版本…",
-  },
-  en: {
-    "skins.switch": "Skin Switcher",
-    "skins.title": "Choose Skin",
-    "skins.official.label": "DeepSeek Harness (Official)",
-    "skins.official.description": "Use the official interface without an additional skin",
-    "appearance.title": "Appearance",
-    "appearance.light": "Light",
-    "appearance.dark": "Dark",
-    "appearance.system": "System",
-    "update.checking": "Checking for updates…",
-    "update.checkFailed": "Unable to check for updates",
-    "update.retry": "Retry",
-    "update.developmentCurrent": "Local development mode - v{current} (latest release v{latest})",
-    "update.developmentNewer": "Local development mode - v{current} (update available: v{latest})",
-    "update.unsupported": "This install source cannot update online",
-    "update.unsupportedHint": "One-click update is available only for installs from the official GitHub repository",
-    "update.available": "Plugin update available",
-    "update.versions": "v{current} → v{latest}",
-    "update.releaseNotes": "Release notes",
-    "update.action": "Update",
-    "update.failed": "Update failed",
-    "update.installed": "Update installed",
-    "update.restartRequired": "v{version} will take effect after DSH Web restarts",
-    "update.restartNow": "Restart now",
-    "update.confirmRestart": "Confirm restart",
-    "update.confirmUnknown": "Restart anyway",
-    "update.later": "Later",
-    "update.deferred": "Restart deferred",
-    "update.restartManual": "Restart DSH Web manually",
-    "update.restarting": "Restarting…",
-    "update.restart.blocked": "{count} Agent(s) are running; try again later",
-    "update.restart.unknown": "Agent status is unavailable; click Restart anyway again to confirm",
-    "update.phase.queued": "Update queued",
-    "update.phase.checking": "Checking the latest stable release…",
-    "update.phase.preparing": "Verifying the Release…",
-    "update.phase.installing": "Downloading and installing…",
-    "update.phase.validating": "Validating the installation…",
-    "update.phase.rollback": "Update failed; restoring the previous version…",
-  },
-};
 const THEME_CHOICES = [
   { id: "light", labelKey: "appearance.light" },
   { id: "dark", labelKey: "appearance.dark" },
@@ -133,11 +53,7 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom }) {
   const UpdatePanel = createUpdatePanel(ctx, { jsx, react });
 
   function fallbackTranslate(key, params = {}) {
-    const template = DICTS.zh[key] ?? key;
-    return Object.entries(params).reduce(
-      (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
-      template,
-    );
+    return formatTemplate(DICTS.zh[key] ?? key, params);
   }
 
   function SwitcherIcon() {
@@ -300,6 +216,12 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom }) {
     id: "skins-switcher",
     order: 4,
     locale: NS,
-    label: () => "皮肤切换",
+    label: () => {
+      try {
+        const text = ctx.locale?.translate?.(NS, "skins.switch");
+        if (typeof text === "string" && text !== "skins.switch") return text;
+      } catch {}
+      return fallbackTranslate("skins.switch");
+    },
   }, SidebarAction));
 }

@@ -1,11 +1,68 @@
+import { HOST_ERROR_KEYS } from "./dicts.js";
+
 const UPDATE_ENDPOINT = "/dsh-skins/update";
 const RESTART_ENDPOINT = "/dsh-skins/restart";
 const TERMINAL_PHASES = new Set(["done", "failed"]);
 
+/** tr() guarded: returns the key itself when no translator is available. */
+function safeTr(tr, key, params) {
+  if (typeof tr !== "function") return key;
+  const text = tr(key, params);
+  return typeof text === "string" ? text : key;
+}
+
+/**
+ * Localize a Host-reported error. The Host attaches a stable `code` (and
+ * optional `params`) to every user-facing error and keeps a zh fallback
+ * message; when the code maps to a dictionary key the localized template
+ * wins, otherwise the raw Host text is shown unchanged. Accepts the plain
+ * strings and Error shapes that never went through the Host fence.
+ */
+export function resolveHostErrorText(value, tr) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string") return value;
+  const key = value.code === undefined ? undefined : HOST_ERROR_KEYS[value.code];
+  if (key !== undefined) {
+    const text = safeTr(tr, key, value.params ?? {});
+    if (text !== key) return text;
+  }
+  return value.text ?? value.message ?? String(value);
+}
+
+/**
+ * Localize a failed update operation's message, composing the automatic
+ * rollback suffix (with its own nested code) when a rollback also failed.
+ */
+export function resolveFailedOperationText(operation, tr) {
+  if (operation === null || operation === undefined) return "";
+  const base = resolveHostErrorText({ code: operation.code, params: operation.params, text: operation.message }, tr);
+  const rollback = operation.rollbackError;
+  if (rollback === null || rollback === undefined) return base;
+  const reason = resolveHostErrorText(rollback, tr);
+  const suffix = safeTr(tr, "host.update.rollbackSuffix", { reason });
+  return suffix === "host.update.rollbackSuffix"
+    ? `${base}；自动回滚失败：${reason}`
+    : base + suffix;
+}
+
+/** Normalize a caught error into the panel's structured error state. */
+function toPanelError(error) {
+  return {
+    text: error instanceof Error ? error.message : String(error),
+    ...(error?.code === undefined ? {} : { code: error.code }),
+    ...(error?.params === undefined ? {} : { params: error.params }),
+  };
+}
+
 async function json(url, options) {
   const response = await fetch(url, options);
   const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(value.error || `HTTP ${response.status}`);
+    if (value.code !== undefined) error.code = value.code;
+    if (value.params !== undefined && value.params !== null) error.params = value.params;
+    throw error;
+  }
   return value;
 }
 
@@ -54,7 +111,7 @@ export function createUpdatePanel(ctx, { jsx, react }) {
         setView({ kind: "ready", status, error: null });
         return status;
       } catch (error) {
-        setView({ kind: "error", status: null, error: error instanceof Error ? error.message : String(error) });
+        setView({ kind: "error", status: null, error: toPanelError(error) });
         return null;
       }
     }, []);
@@ -87,7 +144,7 @@ export function createUpdatePanel(ctx, { jsx, react }) {
           status: current.status === null ? { operation: started.operation } : { ...current.status, operation: started.operation },
         }));
       } catch (error) {
-        setView((current) => ({ ...current, kind: "error", error: error instanceof Error ? error.message : String(error) }));
+        setView((current) => ({ ...current, kind: "error", error: toPanelError(error) }));
       }
     };
 
@@ -127,7 +184,7 @@ export function createUpdatePanel(ctx, { jsx, react }) {
         waitForReplacement();
       } catch (error) {
         setRestarting(false);
-        setView((current) => ({ ...current, error: error instanceof Error ? error.message : String(error) }));
+        setView((current) => ({ ...current, error: toPanelError(error) }));
       }
     };
 
@@ -146,7 +203,7 @@ export function createUpdatePanel(ctx, { jsx, react }) {
     }
     if (view.kind === "error" && status === null) {
       return jsx("div", { className: "dsh-skins-update-row dsh-skins-update-error", children: [
-        jsx("span", { children: view.error || tr("update.checkFailed") }),
+        jsx("span", { children: resolveHostErrorText(view.error, tr) || tr("update.checkFailed") }),
         jsx("button", { type: "button", onClick: () => void loadStatus(true), children: tr("update.retry") }),
       ] });
     }
@@ -183,9 +240,9 @@ export function createUpdatePanel(ctx, { jsx, react }) {
           : showRestart
             ? tr("update.restartRequired", { version: release?.version ?? status?.latest?.version ?? "" })
             : failed
-              ? operation.message
+              ? resolveFailedOperationText(operation, tr)
               : tr("update.versions", { current: status?.currentVersion ?? "", latest: status?.latest?.version ?? "" }) }),
-        view.error ? jsx("span", { className: "dsh-skins-update-error-text", children: view.error }) : null,
+        view.error ? jsx("span", { className: "dsh-skins-update-error-text", children: resolveHostErrorText(view.error, tr) }) : null,
         release?.htmlUrl ? jsx("a", {
           href: release.htmlUrl,
           target: "_blank",

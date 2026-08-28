@@ -89,6 +89,7 @@ const slotRegistrations = [];
 const injectedSlotKeys = [];
 const registeredDicts = [];
 const registeredDictObjects = {};
+let activeLocale = "zh";
 const effects = [];
 const eventListeners = new Map();
 let themeSnapshot = { preference: "system", active: { id: "light" }, themes: [], revision: 0 };
@@ -118,6 +119,12 @@ const ctx = {
 			registeredDicts.push(ns);
 			registeredDictObjects[ns] = dicts;
 			return () => {};
+		},
+		getLocale: () => ({ active: activeLocale }),
+		translate: (ns, key, params) => {
+			const dict = registeredDictObjects[ns];
+			const template = dict?.[activeLocale]?.[key] ?? dict?.en?.[key] ?? key;
+			return Object.entries(params ?? {}).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), template);
 		}
 	},
 	connection: { isLoopback: false },
@@ -178,6 +185,44 @@ const railTree = switcher.comp({ wide: false });
 if (!String(railTree.props.className).includes("rail")) throw new Error("collapsed sidebar should get rail class");
 if (railTree.props.children[0].props.children[1] !== null) throw new Error("rail mode should hide the label");
 console.log("✓ sidebar switcher registered (order " + switcher.opts.order + "); button 皮肤切换; rail mode hides label");
+
+// zh/en dictionary parity gate — no key may exist in only one language.
+const zhKeys = Object.keys(registeredDictObjects["dsh-skins.ui"].zh);
+const enKeys = Object.keys(registeredDictObjects["dsh-skins.ui"].en);
+const zhOnly = zhKeys.filter((key) => !enKeys.includes(key));
+const enOnly = enKeys.filter((key) => !zhKeys.includes(key));
+if (zhOnly.length || enOnly.length) throw new Error("dict key parity broken: zh-only=" + zhOnly + " en-only=" + enOnly);
+if (!enKeys.some((key) => key.startsWith("host."))) throw new Error("en dict must carry localized host error templates");
+console.log("✓ zh/en dictionaries at parity (" + zhKeys.length + " keys, host.* errors localized)");
+
+// localized skin metadata: descriptions follow the active UI locale
+if (!String(mod.listSkins().find((s) => s.id === "openbmc").description).includes("绶带凌风")) throw new Error("zh skin description missing");
+activeLocale = "en";
+const openbmcEn = mod.listSkins().find((s) => s.id === "openbmc");
+const uefiEn = mod.listSkins().find((s) => s.id === "uefi-harness");
+if (!openbmcEn.description.includes("Ribbon mark") || openbmcEn.description.includes("飘带")) throw new Error("en openbmc description missing: " + openbmcEn.description);
+if (!uefiEn.description.includes("Chip mark") || uefiEn.description.includes("固件") || uefiEn.description.includes("占位")) throw new Error("en uefi description missing: " + uefiEn.description);
+activeLocale = "zh";
+
+// unified card style: every description is a "mark · backdrop · palette" triple
+const officialEn = registeredDictObjects["dsh-skins.ui"].en["skins.official.description"];
+const officialZh = registeredDictObjects["dsh-skins.ui"].zh["skins.official.description"];
+for (const [id, text] of [["official", officialEn], ["openbmc", openbmcEn.description], ["uefi-harness", uefiEn.description]]) {
+	if ((text.match(/ · /g) || []).length !== 2) throw new Error(`en description for ${id} must be a three-part triple: ${text}`);
+}
+const openbmcZh = mod.listSkins().find((s) => s.id === "openbmc").description;
+const uefiZh = mod.listSkins().find((s) => s.id === "uefi-harness").description;
+if (uefiZh.includes("占位")) throw new Error("zh uefi description must drop the placeholder prefix: " + uefiZh);
+for (const [id, text] of [["official", officialZh], ["openbmc", openbmcZh], ["uefi-harness", uefiZh]]) {
+	if ((text.match(/ · /g) || []).length !== 2) throw new Error(`zh description for ${id} must be a three-part triple: ${text}`);
+}
+
+// slot registration label resolves through the locale service
+if (switcher.opts.label() !== "皮肤切换") throw new Error("slot label must resolve to zh, got " + switcher.opts.label());
+activeLocale = "en";
+if (switcher.opts.label() !== "Skin Switcher") throw new Error("slot label must resolve to en, got " + switcher.opts.label());
+activeLocale = "zh";
+console.log("✓ skin descriptions and slot label localize with the active UI locale");
 
 // Force the popover open: useState order = open, active skin, box, theme preference.
 stateOverrides = [true, "openbmc", { left: 20, bottom: 50 }, "dark"];

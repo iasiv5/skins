@@ -1,4 +1,5 @@
 import { restartSafety, waitForRestartSafety } from "./restart.js";
+import { codedError, publicError } from "./errors.js";
 
 function sendJson(response, status, value) {
   response.writeHead(status, {
@@ -107,7 +108,7 @@ export function mountUpdateRoutes(host, options) {
           });
         } catch (error) {
           return sendJson(response, 502, {
-            error: error instanceof Error ? error.message : String(error),
+            ...publicError(error),
             operation: updater.currentOperation(),
             restartRequired: updater.restartRequired,
             restartAvailable: restart.available === true,
@@ -119,7 +120,7 @@ export function mountUpdateRoutes(host, options) {
       try {
         return sendJson(response, 202, { operation: updater.startUpdate() });
       } catch (error) {
-        return sendJson(response, 409, { error: error instanceof Error ? error.message : String(error) });
+        return sendJson(response, 409, publicError(error));
       }
     },
   });
@@ -130,8 +131,12 @@ export function mountUpdateRoutes(host, options) {
     handler: async (request, response) => {
       if (!isTrustedRequest(request, trustedHosts)) return sendJson(response, 403, { error: "trusted DSH Web request required" });
       if (!method(request, response, "POST")) return;
-      if (restart.available !== true) return sendJson(response, 501, { error: "当前 DSH Host 不支持自重启" });
-      if (!updater.restartRequired) return sendJson(response, 409, { error: "当前没有等待重启应用的更新" });
+      if (restart.available !== true) {
+        return sendJson(response, 501, publicError(codedError("RESTART_UNAVAILABLE", "当前 DSH Host 不支持自重启")));
+      }
+      if (!updater.restartRequired) {
+        return sendJson(response, 409, publicError(codedError("NO_PENDING_UPDATE", "当前没有等待重启应用的更新")));
+      }
       try {
         const body = await readJsonBody(request);
         const confirmUnknown = body.confirmUnknown === true;
@@ -140,8 +145,7 @@ export function mountUpdateRoutes(host, options) {
         restart.schedule();
       } catch (error) {
         sendJson(response, 409, {
-          error: error instanceof Error ? error.message : String(error),
-          code: error?.code,
+          ...publicError(error),
           restartSafety: restartSafety(agents),
         });
       }

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import { codedError } from "./errors.js";
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const WINDOWS_METACHARS = /[\s"&|<>^()%!]/;
@@ -66,7 +67,14 @@ export function runDshPlugin(profile, args, options = {}) {
     child.on("error", finish);
     child.on("close", (code) => {
       if (code === 0) finish();
-      else finish(new Error(`DSH 插件更新失败（exit ${String(code)}）：${output.trim().slice(-1200) || "no output"}`));
+      else {
+        const tail = output.trim().slice(-1200) || "no output";
+        finish(codedError(
+          "UPDATE_COMMAND_FAILED",
+          `DSH 插件更新失败（exit ${String(code)}）：${tail}`,
+          { exitCode: String(code), output: tail },
+        ));
+      }
     });
     const timer = setTimeout(() => {
       if (child.pid !== undefined) {
@@ -75,7 +83,7 @@ export function runDshPlugin(profile, args, options = {}) {
           else process.kill(-child.pid, "SIGTERM");
         } catch {}
       }
-      finish(new Error("DSH 插件更新超时"));
+      finish(codedError("UPDATE_COMMAND_TIMEOUT", "DSH 插件更新超时"));
     }, options.timeoutMs ?? COMMAND_TIMEOUT_MS);
     timer.unref?.();
   });

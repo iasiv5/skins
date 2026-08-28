@@ -111,7 +111,10 @@ body[data-dsh-uefi-harness] [data-streaming] {
   return {
     id: "uefi-harness",
     label: "UEFI Harness",
-    description: "Dummy：固件芯片标识 · 紫蓝双主题 · 无背景图",
+    description: {
+      zh: "方寸藏芯 · 流霞渐染 · 绀青成韵",
+      en: "Chip mark · gradient backdrop · violet-blue palette",
+    },
     bodyAttr: "dshUefiHarness",
     Mark: UefiMark,
     Name: UefiName,
@@ -123,6 +126,6 @@ body[data-dsh-uefi-harness] [data-streaming] {
     scrimDark: "",
     placeholderLight,
     placeholderDark,
-    slogans: { zh: "启于固件，行于万象", en: "Boot before everything" },
+    slogans: { zh: "启于固件 · 行于万象", en: "Boot before everything" },
   };
 }
