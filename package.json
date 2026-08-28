@@ -63,10 +63,12 @@
     "build": "node scripts/build-client.mjs",
     "watch": "node scripts/build-client.mjs --watch",
     "test": "node smoke-test.cjs && node --test tests/*.test.mjs",
-    "check": "pnpm run build && node --check lib/client.js && node --check lib/index.js && pnpm run test"
+    "verify:readme": "node scripts/verify-readme-pairing.mjs",
+    "check": "pnpm run build && node --check lib/client.js && node --check lib/index.js && pnpm run test && pnpm run verify:readme"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "playwright-core": "1.62.1"
   }
 }

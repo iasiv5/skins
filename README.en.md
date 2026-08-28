@@ -1,123 +1,141 @@
-# dsh-skins — skins for DSH Web
+# dsh-skins — Skin pack for DSH Web
 
-`dsh-skins` adds hot-switchable branded skins to DeepSeek Harness Web. It also keeps a
-**DeepSeek Harness (Official)** choice that retracts the plugin's visual overrides and
-restores the official interface.
+[![Release](https://img.shields.io/github/v/release/iasiv5/skins?label=Release&sort=semver)](../../releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/iasiv5/skins/ci.yml?branch=main&label=CI)](../../actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/iasiv5/skins?label=License)](./LICENSE)
+[![DSH Web](https://img.shields.io/badge/DSH%20Web-0.1.1--rc.2%20verified-2563eb)](#faq)
 
-This is a dual Host/client DSH bundle. The client owns skins and update UI; the Host owns
-stable-Release checks, verified installation, and restart. esbuild generates both
-`lib/client.js` and `lib/index.js`, and both are committed. GitHub installs do not run
-`prepare` or build on the target machine.
+English · [中文](./README.md)
 
-> Verified with DSH Web `0.1.1-rc.2`.
->
-> 中文：[README.md](README.md)
+Hot-swappable brand skins for DeepSeek Harness Web — with a one-click path back to the official interface.
 
-## Available appearances
+![OpenBMC, dark](docs/assets/openbmc-dark.webp)
 
-| Selection ID | Type | Description |
-|---|---|---|
-| `official` | built-in choice | Restores the official DeepSeek Harness brand, background, and favicon while keeping the switcher and official color-mode controls |
-| `openbmc` | production skin | OpenBMC ribbon mark and favicon, light/dark ice-blue palettes, storm-wing artwork, and branded headline |
-| `uefi-harness` | placeholder skin | Independent UEFI chip identity, light/dark violet palettes, and a gradient backdrop for a future production design |
+## Up and running in 30 seconds
 
-With no saved selection, the first load uses `openbmc`. “Official” therefore means
-“restore the official DSH interface”; it is not this plugin's initial selection.
+This section answers: how to install, how to switch skins.
 
-## Skin Switcher
-
-The **Skin Switcher** at the bottom of the sidebar has two sections:
-
-1. **Appearance** — Light, Dark, or System. These controls call the official DSH theme
-   service and stay synchronized with Settings → General → Appearance.
-2. **Choose Skin** — **DeepSeek Harness (Official)** appears first, followed by the
-   custom skins in this repository. A click applies immediately, persists the selection,
-   and leaves the popover open for quick comparison.
-
-Choosing “Official” removes custom skin overrides without changing the Light, Dark, or
-System preference. When the sidebar is collapsed, the entry becomes a circular palette
-button. Multiple `sidebar.footer.action` entries are arranged vertically to avoid overlap.
-
-### URL and debug API
-
-```js
-__DSH_SKINS__.list();                  // custom skins only; excludes official
-__DSH_SKINS__.select("official");      // restore the official DSH interface
-__DSH_SKINS__.select("uefi-harness");  // switch to the UEFI placeholder
-__DSH_SKINS__.active();                // current selection ID
-__DSH_SKINS__.themePreference();       // remote-browser color preference; may be null
+```sh
+dsh plugin --profile web add github:iasiv5/skins#main
 ```
 
-The URL selector accepts `/?skin=official`, `/?skin=openbmc`, and
-`/?skin=uefi-harness`. The skin selection is stored in
-`localStorage["dsh-skins:active"]`.
+1. Run the install command above.
+2. Restart DSH Web (for example `systemctl restart` the matching service, depending on your deployment).
+3. Refresh the page.
+4. Click **Skin Switcher** at the bottom of the sidebar and pick a skin.
 
-## Stable Release updates
+On a fresh install with no saved choice, OpenBMC is the default skin. For reproducible installs, use a tag from [Releases](../../releases) or pin a reviewed 40-character commit SHA:
 
-When the Skin Switcher opens, the Host checks the latest stable GitHub Release for
-`iasiv5/skins`. Results are cached for one hour in
-`$DSH_HOME/dsh-skins/update-cache.json` and survive DSH restarts. The update row stays
-hidden when current; a failed network check shows a compact Retry action.
+```sh
+dsh plugin --profile web add github:iasiv5/skins#<commit-sha>
+```
 
-One-click update is available only when the current dependency points to the official
-GitHub repository. A `link:` install shows local development mode with update disabled;
-`file:`/tar installs and other repositories are never overwritten. When a newer Release
-exists, the row shows current/latest versions, a Release-notes link, and Update.
+Update and uninstall:
 
-The Host requires an exact `vX.Y.Z` tag, resolves it to a full commit SHA, and verifies the
-remote package name, repository, `package.json.version`, and DSH Web metadata. Installation
-uses the immutable SHA and is validated again afterward. A failure restores the previous
-GitHub installation. On success, users choose Restart now or Later; running Agents block
-restart. When DSH itself runs under a service manager (detected via
-`INVOCATION_ID`/`NOTIFY_SOCKET`), Restart now exits non-zero and hands the restart back to
-the manager's `Restart` policy; the detached relaunch helper is only used outside one.
+```sh
+dsh plugin --profile web update dsh-skins    # update
+dsh plugin --profile web remove dsh-skins    # uninstall
+```
 
-Every stable publication must keep `package.json.version` exactly aligned with the GitHub
-Release tag. Because the updater starts in `v0.4.0`, installations older than `v0.4.0`
-need one manual upgrade before the in-product Update action becomes available.
+<details>
+<summary>Hand the install to your Agent (prompt install)</summary>
 
-## Color-mode persistence
-
-For non-loopback browsers, the plugin observes the official `theme/change` event and
-stores `light`, `dark`, or `system` in
-`localStorage["dsh-skins:theme-preference"]`. It restores that value through the official
-`theme.setTheme()` API. Loopback browsers skip this fallback and keep using DSH Host
-persistence.
-
-## Repository layout
+Copy the whole block below to an Agent inside DSH Web:
 
 ```text
-src/
-├── index.js                         # Host entry; assembles updater and routes
-├── host/
-│   ├── self-update.js               # Release/cache/SHA validation, transaction, rollback
-│   ├── runner.js                    # DSH profile command adapter
-│   ├── routes.js                    # update/restart HTTP interface behind DSH browser trust
-│   └── restart.js                   # Agent safety and DSH relaunch
-└── client/
-    ├── index.js                     # DSH ModuleLoader client entry
-    ├── runtime.js                   # skin registry, mount/unmount, selection, persistence
-    ├── sidebar-switcher.js          # sidebar entry, popover, locale strings
-    ├── update-panel.js              # update row, progress, errors, restart interaction
-    ├── theme-persistence.js         # non-loopback color-mode fallback
-    └── skins/
-        ├── openbmc-harness/index.js # independent OpenBMC skin
-        └── uefi-harness/index.js    # independent UEFI placeholder
-scripts/build-client.mjs             # esbuild: generates Host and client bundles
-lib/index.js                         # generated Host bundle
-lib/client.js                        # generated client bundle
-cordis.patch.yml                     # registers row id `skins`
-smoke-test.cjs                       # client ModuleLoader/DOM smoke test
-tests/*.test.mjs                     # Host updater, cache, rollback, restart-safety tests
+Install the DSH skin plugin dsh-skins for me:
+1. Run: dsh plugin --profile web add github:iasiv5/skins#main
+2. Once it succeeds, restart DSH Web (if it runs under systemd, restart the service).
+3. Remind me to refresh the page afterwards.
+If the install fails, send me the command output verbatim and retry at most once.
 ```
 
-Each custom skin directory owns its mark, favicon, CSS, backdrop, and slogans. Skin
-directories must not import visual assets from one another. `runtime.js` and
-`sidebar-switcher.js` contain shared mechanics only.
+</details>
 
-## Add a custom skin
+## Three appearances
 
-Create `src/client/skins/<id>/index.js` and export a factory with this shape:
+This section answers: which skins exist and what each feels like.
+
+| Choice ID | Kind | Description |
+|---|---|---|
+| `official` | built-in option | DeepSeek mark · default backdrop · brand palette |
+| `openbmc` | full skin | Ribbon mark · storm-wing backdrop · ice-blue palette |
+| `uefi-harness` | placeholder skin | Chip mark · gradient backdrop · violet-blue palette |
+
+- `official` restores the official DeepSeek Harness branding, backdrop and favicon, while keeping the skin switcher and the official light/dark palettes.
+- `openbmc` is the default skin. "Official" only means restoring the official interface; it is not the first-load choice.
+- Every skin ships one palette per light/dark mode and follows the appearance setting automatically:
+
+![OpenBMC, light](docs/assets/openbmc-light.webp)
+
+- `uefi-harness` is a placeholder skin: the architecture and interactions come first, the real design lands later.
+
+## The skin switcher
+
+This section answers: what lives in the switcher and how to use it.
+
+![Skin switcher](docs/assets/switcher-dark.webp)
+
+The **Skin Switcher** popover at the bottom of the sidebar has two sections:
+
+1. **Appearance**: Light, Dark, System. It calls the official theme service and stays in sync with Settings → General → Appearance.
+2. **Choose Skin**: the first entry is DeepSeek Harness (Official), followed by the extension skins. Clicking switches instantly and persists the choice; the popover stays open for continuous preview.
+
+When the sidebar is collapsed, the entry shows as a round palette icon. Choosing "Official" only undoes the extension skins — your light/dark/system preference is untouched. Multiple `sidebar.footer.action` entries stack vertically instead of overlapping.
+
+The URL switches skins too: `/?skin=official`, `/?skin=openbmc`, `/?skin=uefi-harness`. The choice is stored in `localStorage["dsh-skins:active"]`.
+
+Console debug API:
+
+```js
+__DSH_SKINS__.list();                  // list extension skins, excluding official
+__DSH_SKINS__.select("official");      // restore the official interface
+__DSH_SKINS__.active();                // currently selected id
+__DSH_SKINS__.themePreference();       // appearance saved by this browser; may be null
+```
+
+## One-click updates and the security design
+
+This section answers: how updates work, and why it is safe to let the plugin install them.
+
+Opening the skin switcher makes the Host check the latest stable Release of this repository. When a newer version exists, the update row shows the current/latest versions and a release-notes link:
+
+1. Click **Update**; download, install and verification run automatically.
+2. Click **Restart now** (or **Later**); the new version takes effect after the restart.
+3. Running Agents block the restart; retry once they finish.
+
+Why it is safe — every step is verified in code, not on trust:
+
+- only strict `vX.Y.Z` stable tags are accepted, resolved to a full 40-character commit SHA;
+- the remote package name, repository and `package.json` version must all agree;
+- the actual install is pinned to that SHA, never drifting with a branch;
+- after installing, the profile and the installed package are re-verified; any failure restores the previous version automatically;
+- under service managers such as systemd, the restart is handed back to the unit's `Restart` policy instead of killing the process.
+
+> The update module ships from `v0.4.0`. On older installs, run `dsh plugin --profile web update dsh-skins` once manually; one-click updates work from then on.
+
+## How it works
+
+This section is for people reading the source: how the plugin is built and how the update transaction lands.
+
+**Two-ended design**. The client owns the skins and the switcher UI; the Host owns Release checks, safe installs and restarts. esbuild produces `lib/client.js` and `lib/index.js`, and both artifacts are committed — a GitHub install never builds on the target machine.
+
+**The update transaction** (Host):
+
+- Check results are cached in `$DSH_HOME/dsh-skins/update-cache.json` with a one-hour TTL that survives DSH restarts. When already up to date, no update row appears; on network failure you can retry manually at the bottom of the popover.
+- The install source is re-checked before updating. Only installs from the official GitHub repository may update online: `link:` installs show "local development mode" with online updates disabled; `file:`, tarballs and other repositories are never overwritten.
+- After installation the profile pin, bundle registration and installed metadata are verified; any failure automatically restores the pre-update GitHub install.
+- Restart safety: running Agents are detected and block the restart; under a service manager (detected via `INVOCATION_ID`/`NOTIFY_SOCKET`) the process exits non-zero to hand the restart to the `Restart` policy; the built-in detach-and-relaunch helper runs only outside service managers.
+
+**Theme persistence**. In non-loopback browsers the plugin listens to the official `theme/change` event, stores light/dark/system in `localStorage["dsh-skins:theme-preference"]`, and restores it through the official `theme.setTheme()` on startup. Loopback browsers skip this fallback and use DSH's own Host persistence.
+
+**Localized errors**. Every Host error that reaches the UI carries a stable machine code plus template params; the client renders the localized text from them and falls back to the raw Host message for unknown codes.
+
+## Build your own skin
+
+This section answers: how to add a skin of your own.
+
+Export a factory from `src/client/skins/<id>/index.js`:
 
 ```js
 export function createMySkin({ jsx }) {
@@ -127,7 +145,7 @@ export function createMySkin({ jsx }) {
   return {
     id: "my-skin",
     label: "My Skin",
-    description: "Short description",
+    description: { zh: "一句话描述", en: "One-line description" },
     bodyAttr: "dshMySkin",
     Mark,
     Name,
@@ -144,62 +162,58 @@ export function createMySkin({ jsx }) {
 }
 ```
 
-Add the matching import and `runtime.register(...)` call to `src/client/index.js`; reverse
-those changes when removing a skin. Keep `official` and the compatibility alias `default`
-reserved.
+Then:
+
+1. add the matching import and `runtime.register(...)` call in `src/client/index.js`;
+2. reverse both when removing a skin;
+3. keep the id `official` and the compatibility alias `default` reserved — never for extension skins.
+
+`label` and `description` accept either a locale-neutral string (brand names) or a `{ zh, en }` map, resolved as active locale → en → zh. Skin cards and `__DSH_SKINS__.list()` always report resolved strings, and `tests/dicts.test.mjs` keeps the zh/en dictionaries key- and placeholder-complete in both directions.
+
+Each skin directory owns its mark, favicon, CSS, backdrop and slogans, and must not import visual assets from other skin directories; `runtime.js` and `sidebar-switcher.js` carry the shared mechanics only.
 
 ## Local development and verification
 
+This section answers: how to run it, and how to keep the artifacts clean.
+
 ```sh
 pnpm install
-pnpm run check
-pnpm run watch
+pnpm run check     # build + syntax checks + smoke test + full test suite
+pnpm run watch     # watch src/, rebuilding lib/client.js and lib/index.js
 ```
 
-`check` builds both bundles, runs JavaScript syntax checks, and executes the client smoke
-test plus Host updater tests. `watch` observes `src/client/` and `src/host/`, rebuilding
-`lib/client.js` and `lib/index.js`. DSH client HMR can load rebuilt client bundles; Host
-source, `package.json`, `cordis.patch.yml`, and dependency changes still require a DSH Web
-restart.
+- The client bundle hot-reloads through DSH HMR; Host sources, `package.json`, `cordis.patch.yml` or dependency changes still require a DSH Web restart.
+- Commit sources together with the regenerated `lib/` artifacts. CI re-runs the checks, verifies the artifacts are unchanged and inspects the install package.
+- Re-shoot the documentation screenshots with `node scripts/capture-previews.mjs`. The script enforces the privacy protocol: collapse every workspace, frame a fresh empty session, force the Chinese UI — no session content ever leaks.
+- The two READMEs (zh/en) are paired by a verification script; change one side and you must bring the other along — see `README.i18n.yaml`.
 
-Commit source changes together with both regenerated `lib` bundles. CI reruns the checks,
-verifies that generated output has no uncommitted diff, and validates the install artifact.
-
-## Install from GitHub
-
-Install the development branch:
+Development install (live-link the local checkout; client edits are visible immediately):
 
 ```sh
-dsh plugin --profile web add github:iasiv5/skins#main
+dsh plugin --profile web add link:<path-to-this-repo>
 ```
 
-Restart DSH Web and refresh after installation. For reproducible installs, use a tag from
-[Releases](https://github.com/iasiv5/skins/releases) or pin a reviewed 40-character commit
-SHA:
+## FAQ
 
-```sh
-dsh plugin --profile web add github:iasiv5/skins#<commit-sha>
-```
+**How do I get fully back to the official interface?**
+Pick "DeepSeek Harness (Official)" in the skin switcher, or open `/?skin=official`. It undoes the extension skin's branding, backdrop and favicon while keeping the switcher and the official light/dark palettes; your light/dark/system preference stays untouched.
 
-Update an installation that tracks `main`:
+**What happens when an update fails?**
+The update transaction backs up before it installs. Any verification failure automatically restores the previous version, and the popover shows the failure reason (in Chinese and English). If it still fails, update manually with `dsh plugin --profile web update dsh-skins`.
 
-```sh
-dsh plugin --profile web update dsh-skins
-```
+**Which DSH Web versions are supported?**
+Verified with DSH Web `0.1.1-rc.2`. Later rc builds of the same series are expected to work, but unverified versions carry no promise.
 
-Uninstall:
+**Does my appearance preference sync across browsers?**
+In the browser on the DSH host machine (loopback), the preference is persisted by the DSH Host and shared naturally. Other remote browsers keep the preference in their own `localStorage` — independent per browser, never overwritten.
 
-```sh
-dsh plugin --profile web remove dsh-skins
-```
+## Known limits
 
-## Known limitations
+- The OpenBMC user-bubble outline relies on the version-specific class `.gdEzaW_bubble`; if that class changes, only the outline is affected — the token palette keeps working.
+- Brand slogans are swapped through the current DSH locale dictionary interface and restored on unmount; re-review after DSH locale upgrades.
+- Other skin plugins may also touch the body backdrop, brand slots or favicon; avoid enabling multiple visual skin plugins at the same time.
+- `uefi-harness` is an architecture-and-interaction placeholder, not the final UEFI brand design.
 
-- The OpenBMC user-bubble border uses the version-specific `.gdEzaW_bubble` class. If that
-  class changes, only the decorative border is lost; token-based colors still apply.
-- Branded headlines replace entries through the current DSH locale dictionary interface
-  and are restored on skin unload; review this integration after a DSH locale upgrade.
-- Other skin plugins may also change the body background, brand slots, or favicon. Avoid
-  enabling multiple visual skin plugins at the same time.
-- `uefi-harness` is an architecture and interaction placeholder, not an official UEFI
-  brand design.
+## License
+
+[MIT](./LICENSE)
