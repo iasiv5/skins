@@ -1,7 +1,66 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { restartSafety, waitForRestartSafety } from "../src/host/restart.js";
+import { createRestartScheduler, restartSafety, waitForRestartSafety } from "../src/host/restart.js";
 import { isTrustedRequest } from "../src/host/routes.js";
+
+function fakeRuntime(overrides) {
+  const spawns = [];
+  const timers = [];
+  return {
+    spawns,
+    timers,
+    ...overrides,
+    spawn: (...args) => {
+      spawns.push(args);
+      return { unref() {} };
+    },
+    setTimeout: (fn, ms) => {
+      timers.push({ fn, ms });
+      return { unref() {} };
+    },
+  };
+}
+
+test("restart scheduler exits non-zero without a helper under systemd", () => {
+  let exitCode = null;
+  const fake = fakeRuntime({ env: { INVOCATION_ID: "a6925276-3fc1-43d1-bc63-4310302f526e" } });
+  const scheduler = createRestartScheduler((code) => { exitCode = code; }, fake);
+  assert.equal(scheduler.available, true);
+  scheduler.schedule();
+  scheduler.schedule();
+  assert.equal(fake.spawns.length, 0, "managed restarts must not spawn a relaunch helper");
+  assert.equal(fake.timers.length, 1);
+  assert.equal(fake.timers[0].ms, 150);
+  fake.timers[0].fn();
+  assert.equal(exitCode, 75, "managed restarts must exit non-zero for Restart=on-failure");
+});
+
+test("restart scheduler also honours NOTIFY_SOCKET service managers", () => {
+  let exitCode = null;
+  const fake = fakeRuntime({ env: { NOTIFY_SOCKET: "/run/systemd/notify" } });
+  createRestartScheduler((code) => { exitCode = code; }, fake).schedule();
+  assert.equal(fake.spawns.length, 0);
+  fake.timers[0].fn();
+  assert.equal(exitCode, 75);
+});
+
+test("restart scheduler keeps the relaunch helper outside service managers", () => {
+  let exitCode = null;
+  const fake = fakeRuntime({
+    env: {},
+    execPath: "/usr/bin/node",
+    argv: ["/usr/bin/node", "dsh", "web"],
+    cwd: "/home/ubuntu/.dsh",
+    pid: 4321,
+  });
+  createRestartScheduler((code) => { exitCode = code; }, fake).schedule();
+  assert.equal(fake.spawns.length, 1, "unmanaged restarts still spawn the helper");
+  assert.equal(fake.spawns[0][0], "/usr/bin/node");
+  assert.match(fake.spawns[0][1].join(" "), /4321/);
+  assert.equal(fake.timers.length, 1);
+  fake.timers[0].fn();
+  assert.equal(exitCode, 0, "unmanaged restarts keep the historical clean exit");
+});
 
 test("browser-trust fence accepts only loopback or configured authorities", () => {
   assert.equal(isTrustedRequest({ headers: { host: "127.0.0.1:3080" } }), true);

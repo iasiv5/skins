@@ -68,7 +68,9 @@ The Host requires an exact `vX.Y.Z` tag, resolves it to a full commit SHA, and v
 remote package name, repository, `package.json.version`, and DSH Web metadata. Installation
 uses the immutable SHA and is validated again afterward. A failure restores the previous
 GitHub installation. On success, users choose Restart now or Later; running Agents block
-restart.
+restart. When DSH itself runs under a service manager (detected via
+`INVOCATION_ID`/`NOTIFY_SOCKET`), Restart now exits non-zero and hands the restart back to
+the manager's `Restart` policy; the detached relaunch helper is only used outside one.
 
 Every stable publication must keep `package.json.version` exactly aligned with the GitHub
 Release tag. Because the updater starts in `v0.4.0`, installations older than `v0.4.0`

@@ -60,7 +60,9 @@ Release 说明链接和更新按钮。
 更新模块会校验严格的 `vX.Y.Z` tag、解析完整 commit SHA，并确认远端包名、仓库、
 `package.json.version` 与 DSH Web 元数据一致。实际安装固定到 SHA；安装后再次校验 profile
 和已安装包，失败则自动恢复原 GitHub 安装。更新成功后可选择“立即重启”或“稍后”；检测到
-运行中的 Agent 时会阻止重启。
+运行中的 Agent 时会阻止重启。当 DSH 运行在 systemd 等服务管理器下（探测
+`INVOCATION_ID`/`NOTIFY_SOCKET`），“立即重启”以非零码退出并把重启交回服务管理器的
+`Restart` 策略；脱离服务管理器运行时才使用内置的脱离重拉助手。
 
 每次正式发布必须保证 `package.json.version` 与 GitHub Release tag 完全一致。由于更新模块从
 `v0.4.0` 才开始提供，早于 `v0.4.0` 的安装需要先手动升级一次；之后才能在弹层中一键更新。

@@ -24,6 +24,18 @@ const waitForParent = () => {
 waitForParent()
 `;
 
+// Exit code used to hand a restart to the service manager: non-zero so a
+// `Restart=on-failure` unit re-launches the process, while 75 (EX_TEMPFAIL)
+// stays distinctive in service logs compared with genuine crash exit codes.
+const MANAGED_RESTART_EXIT_CODE = 75;
+
+// systemd sets INVOCATION_ID for every service it starts and NOTIFY_SOCKET
+// for Type=notify units; either marker means this cgroup is manager-owned.
+function serviceManagedEnv(env) {
+  return typeof env === "object" && env !== null
+    && (env.INVOCATION_ID !== undefined || env.NOTIFY_SOCKET !== undefined);
+}
+
 export function createRestartScheduler(exit, overrides = {}) {
   if (typeof exit !== "function") return { available: false, schedule() {} };
   const runtime = {
@@ -42,6 +54,15 @@ export function createRestartScheduler(exit, overrides = {}) {
     schedule() {
       if (scheduled) return;
       scheduled = true;
+      if (serviceManagedEnv(runtime.env)) {
+        // Under a service manager the unit owns this cgroup: the relaunch
+        // helper below would be killed by cgroup cleanup once the main
+        // process exits, and its clean exit(0) never triggers
+        // Restart=on-failure. Hand the restart to the manager instead.
+        const managed = runtime.setTimeout(() => exit(MANAGED_RESTART_EXIT_CODE), 150);
+        managed.unref?.();
+        return;
+      }
       const helper = runtime.spawn(runtime.execPath, [
         "-e",
         RELAUNCH_HELPER,
