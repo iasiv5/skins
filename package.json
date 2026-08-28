@@ -1,7 +1,7 @@
 {
   "name": "dsh-skins",
   "description": "Modular DSH Web skin pack with official fallback, OpenBMC and UEFI appearances, and verified stable-Release updates",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "homepage": "https://github.com/iasiv5/skins#readme",
   "repository": {
     "type": "git",
