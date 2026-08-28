@@ -1,7 +1,7 @@
 {
   "name": "dsh-skins",
-  "description": "Modular multi-skin pack for the DSH Web GUI; ships independent OpenBMC Harness and dummy UEFI Harness skins",
-  "version": "0.3.1",
+  "description": "Modular DSH Web skin pack with official fallback, OpenBMC and UEFI appearances, and verified stable-Release updates",
+  "version": "0.4.0",
   "homepage": "https://github.com/iasiv5/skins#readme",
   "repository": {
     "type": "git",
@@ -51,6 +51,7 @@
     }
   },
   "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-connection": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.1-rc.2",
@@ -61,10 +62,11 @@
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "watch": "node scripts/build-client.mjs --watch",
-    "test": "node smoke-test.cjs",
-    "check": "pnpm run build && node --check lib/client.js && node smoke-test.cjs"
+    "test": "node smoke-test.cjs && node --test tests/*.test.mjs",
+    "check": "pnpm run build && node --check lib/client.js && node --check lib/index.js && pnpm run test"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
     "esbuild": "^0.28.2"
   }
 }

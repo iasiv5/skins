@@ -4,9 +4,10 @@
 **DeepSeek Harness (Official)** choice that retracts the plugin's visual overrides and
 restores the official interface.
 
-This is a client-only DSH bundle. esbuild produces the single `lib/client.js` loaded by
-DSH, and that generated file is committed. GitHub installs do not run `prepare` or build
-on the target machine.
+This is a dual Host/client DSH bundle. The client owns skins and update UI; the Host owns
+stable-Release checks, verified installation, and restart. esbuild generates both
+`lib/client.js` and `lib/index.js`, and both are committed. GitHub installs do not run
+`prepare` or build on the target machine.
 
 > Verified with DSH Web `0.1.1-rc.2`.
 >
@@ -51,6 +52,28 @@ The URL selector accepts `/?skin=official`, `/?skin=openbmc`, and
 `/?skin=uefi-harness`. The skin selection is stored in
 `localStorage["dsh-skins:active"]`.
 
+## Stable Release updates
+
+When the Skin Switcher opens, the Host checks the latest stable GitHub Release for
+`iasiv5/skins`. Results are cached for one hour in
+`$DSH_HOME/dsh-skins/update-cache.json` and survive DSH restarts. The update row stays
+hidden when current; a failed network check shows a compact Retry action.
+
+One-click update is available only when the current dependency points to the official
+GitHub repository. A `link:` install shows local development mode with update disabled;
+`file:`/tar installs and other repositories are never overwritten. When a newer Release
+exists, the row shows current/latest versions, a Release-notes link, and Update.
+
+The Host requires an exact `vX.Y.Z` tag, resolves it to a full commit SHA, and verifies the
+remote package name, repository, `package.json.version`, and DSH Web metadata. Installation
+uses the immutable SHA and is validated again afterward. A failure restores the previous
+GitHub installation. On success, users choose Restart now or Later; running Agents block
+restart.
+
+Every stable publication must keep `package.json.version` exactly aligned with the GitHub
+Release tag. Because the updater starts in `v0.4.0`, installations older than `v0.4.0`
+need one manual upgrade before the in-product Update action becomes available.
+
 ## Color-mode persistence
 
 For non-loopback browsers, the plugin observes the official `theme/change` event and
@@ -62,19 +85,28 @@ persistence.
 ## Repository layout
 
 ```text
-src/client/
-├── index.js                         # DSH ModuleLoader entry and assembly
-├── runtime.js                       # registry, mount/unmount, selection, persistence
-├── sidebar-switcher.js              # sidebar entry, popover, locale strings
-├── theme-persistence.js             # non-loopback color-mode fallback
-└── skins/
-    ├── openbmc-harness/index.js     # independent OpenBMC skin
-    └── uefi-harness/index.js        # independent UEFI placeholder
-scripts/build-client.mjs             # esbuild: src/client/index.js → lib/client.js
-lib/index.js                         # host entry with no host-side behavior
-lib/client.js                        # generated and committed; do not hand-edit
+src/
+├── index.js                         # Host entry; assembles updater and routes
+├── host/
+│   ├── self-update.js               # Release/cache/SHA validation, transaction, rollback
+│   ├── runner.js                    # DSH profile command adapter
+│   ├── routes.js                    # update/restart HTTP interface behind DSH browser trust
+│   └── restart.js                   # Agent safety and DSH relaunch
+└── client/
+    ├── index.js                     # DSH ModuleLoader client entry
+    ├── runtime.js                   # skin registry, mount/unmount, selection, persistence
+    ├── sidebar-switcher.js          # sidebar entry, popover, locale strings
+    ├── update-panel.js              # update row, progress, errors, restart interaction
+    ├── theme-persistence.js         # non-loopback color-mode fallback
+    └── skins/
+        ├── openbmc-harness/index.js # independent OpenBMC skin
+        └── uefi-harness/index.js    # independent UEFI placeholder
+scripts/build-client.mjs             # esbuild: generates Host and client bundles
+lib/index.js                         # generated Host bundle
+lib/client.js                        # generated client bundle
 cordis.patch.yml                     # registers row id `skins`
-smoke-test.cjs                       # ModuleLoader, DOM, switching, cleanup tests
+smoke-test.cjs                       # client ModuleLoader/DOM smoke test
+tests/*.test.mjs                     # Host updater, cache, rollback, restart-safety tests
 ```
 
 Each custom skin directory owns its mark, favicon, CSS, backdrop, and slogans. Skin
@@ -122,15 +154,14 @@ pnpm run check
 pnpm run watch
 ```
 
-`check` builds the client bundle, runs a JavaScript syntax check, and executes the smoke
-test. `watch` observes `src/client/` and rebuilds `lib/client.js`. With a local `link:`
-installation, DSH Web client HMR can load each rebuilt bundle. Changes to
-`package.json`'s `dsh.client`, `cordis.patch.yml`, or plugin dependencies still require a
-DSH Web restart.
+`check` builds both bundles, runs JavaScript syntax checks, and executes the client smoke
+test plus Host updater tests. `watch` observes `src/client/` and `src/host/`, rebuilding
+`lib/client.js` and `lib/index.js`. DSH client HMR can load rebuilt client bundles; Host
+source, `package.json`, `cordis.patch.yml`, and dependency changes still require a DSH Web
+restart.
 
-Commit source changes together with the regenerated `lib/client.js`. CI reruns the checks,
-verifies that the generated bundle has no uncommitted diff, and validates the install
-artifact.
+Commit source changes together with both regenerated `lib` bundles. CI reruns the checks,
+verifies that generated output has no uncommitted diff, and validates the install artifact.
 
 ## Install from GitHub
 

@@ -3,8 +3,9 @@
 `dsh-skins` 为 DeepSeek Harness Web 提供可热切换的品牌皮肤，同时保留一个
 **DeepSeek Harness（官方）**选项，用于撤销插件施加的视觉覆盖并恢复官方界面。
 
-插件是纯前端 DSH bundle：源码由 esbuild 打包为 `lib/client.js`，生成产物随仓库提交；
-GitHub 安装不运行 `prepare`，也不需要在目标机器上构建。
+插件是 Host/Client 双端 DSH bundle：客户端负责皮肤与更新界面，Host 负责正式 Release 检查、
+安全安装和重启。esbuild 生成 `lib/client.js` 与 `lib/index.js`，产物随仓库提交；GitHub 安装
+不运行 `prepare`，也不需要在目标机器上构建。
 
 > 已使用 DSH Web `0.1.1-rc.2` 验证。
 >
@@ -46,6 +47,24 @@ __DSH_SKINS__.themePreference();       // 远程浏览器保存的官方配色�
 也可以使用 `/?skin=official`、`/?skin=openbmc` 或 `/?skin=uefi-harness`。
 皮肤选择保存在 `localStorage["dsh-skins:active"]`。
 
+## 正式版本更新
+
+打开皮肤切换器时，Host 会检查 `iasiv5/skins` 的最新正式 GitHub Release。检查结果缓存在
+`$DSH_HOME/dsh-skins/update-cache.json`，有效期为 1 小时并跨 DSH 重启保留；已是最新版时
+不显示更新栏，网络失败时可在弹层底部手动重试。
+
+仅从官方 GitHub 仓库安装的版本可以一键更新。`link:` 开发安装会显示“本地开发模式”且禁用
+在线更新，`file:`/tar 与其他仓库来源也不会被覆盖。发现新版本后，更新栏显示当前/最新版本、
+Release 说明链接和更新按钮。
+
+更新模块会校验严格的 `vX.Y.Z` tag、解析完整 commit SHA，并确认远端包名、仓库、
+`package.json.version` 与 DSH Web 元数据一致。实际安装固定到 SHA；安装后再次校验 profile
+和已安装包，失败则自动恢复原 GitHub 安装。更新成功后可选择“立即重启”或“稍后”；检测到
+运行中的 Agent 时会阻止重启。
+
+每次正式发布必须保证 `package.json.version` 与 GitHub Release tag 完全一致。由于更新模块从
+`v0.4.0` 才开始提供，早于 `v0.4.0` 的安装需要先手动升级一次；之后才能在弹层中一键更新。
+
 ## 明暗配色持久化
 
 在非 loopback 浏览器中，插件监听官方 `theme/change`，将 `light`、`dark` 或 `system`
@@ -56,19 +75,28 @@ Host 持久化。
 ## 仓库结构
 
 ```text
-src/client/
-├── index.js                         # DSH ModuleLoader 入口与模块组装
-├── runtime.js                       # 注册、挂载、卸载、选择与持久化
-├── sidebar-switcher.js              # 侧栏入口、弹层和本地化词条
-├── theme-persistence.js             # 非 loopback 配色持久化 fallback
-└── skins/
-    ├── openbmc-harness/index.js     # OpenBMC 独立皮肤
-    └── uefi-harness/index.js        # UEFI 独立占位皮肤
-scripts/build-client.mjs             # esbuild：src/client/index.js → lib/client.js
-lib/index.js                         # 无 Host 行为的入口
-lib/client.js                        # 自动生成并提交；不要手工编辑
+src/
+├── index.js                         # Host 入口，组装更新模块与路由
+├── host/
+│   ├── self-update.js               # Release、缓存、SHA 校验、安装事务与回滚
+│   ├── runner.js                    # DSH profile 命令 adapter
+│   ├── routes.js                    # DSH 浏览器信任栅栏保护的更新/重启 HTTP interface
+│   └── restart.js                   # Agent 安全检查与 DSH 自重启
+└── client/
+    ├── index.js                     # DSH ModuleLoader 客户端入口
+    ├── runtime.js                   # 皮肤注册、挂载、卸载、选择与持久化
+    ├── sidebar-switcher.js          # 侧栏入口、弹层和本地化词条
+    ├── update-panel.js              # 更新栏、进度、错误与重启交互
+    ├── theme-persistence.js         # 非 loopback 配色持久化 fallback
+    └── skins/
+        ├── openbmc-harness/index.js # OpenBMC 独立皮肤
+        └── uefi-harness/index.js    # UEFI 独立占位皮肤
+scripts/build-client.mjs             # esbuild：同时生成 Host 与 Client bundle
+lib/index.js                         # 自动生成的 Host bundle
+lib/client.js                        # 自动生成的 Client bundle
 cordis.patch.yml                     # 注册 row id `skins`
-smoke-test.cjs                       # ModuleLoader、DOM、切换与清理冒烟测试
+smoke-test.cjs                       # 客户端 ModuleLoader/DOM 冒烟测试
+tests/*.test.mjs                     # Host 更新、缓存、回滚与重启安全测试
 ```
 
 每个扩展皮肤目录自行提供品牌标识、favicon、CSS、背景和标语，不得从其他皮肤目录
@@ -114,12 +142,12 @@ pnpm run check
 pnpm run watch
 ```
 
-`check` 会构建客户端 bundle、执行 JavaScript 语法检查并运行冒烟测试。`watch` 监听
-`src/client/`，自动重建 `lib/client.js`。使用本地 `link:` 安装时，DSH Web 可通过客户端
-HMR 加载新的 bundle；修改 `package.json` 的 `dsh.client`、`cordis.patch.yml` 或插件
-依赖关系后仍需重启 DSH Web。
+`check` 会构建 Host/Client bundle、执行 JavaScript 语法检查，并运行客户端冒烟测试与 Host
+更新模块测试。`watch` 同时监听 `src/client/` 和 `src/host/`，分别重建 `lib/client.js` 与
+`lib/index.js`。客户端 bundle 可通过 DSH HMR 热更新；Host 源码、`package.json`、
+`cordis.patch.yml` 或插件依赖变化后仍需重启 DSH Web。
 
-提交前应同时提交源码和重新生成的 `lib/client.js`。CI 会再次运行检查、确认生成产物无差异，
+提交前应同时提交源码和重新生成的两个 `lib` 产物。CI 会再次运行检查、确认生成产物无差异，
 并验证安装包内容。
 
 ## 从 GitHub 安装
