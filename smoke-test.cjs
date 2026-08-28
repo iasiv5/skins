@@ -94,11 +94,23 @@ const eventListeners = new Map();
 let themeSnapshot = { preference: "system", active: { id: "light" }, themes: [], revision: 0 };
 const ctx = {
 	slots: {
-		register(opts, comp) { slotRegistrations.push({ opts, comp }); return () => {}; },
+		_injected: [],
+		register(opts, comp) {
+			if (!this._injected.includes(opts.name)) {
+				throw new Error(`slot "${opts.name}" is not declared through slots.inject()`);
+			}
+			slotRegistrations.push({ opts, comp });
+			return () => {};
+		},
 		inject(key, callback) {
 			injectedSlotKeys.push(key);
-			if (key === "sidebar.footer.action") callback();
-			return () => {};
+			this._injected.push(key);
+			try {
+				const dispose = callback();
+				return typeof dispose === "function" ? dispose : () => {};
+			} finally {
+				this._injected.pop();
+			}
 		},
 	},
 	locale: {

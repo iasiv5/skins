@@ -52,9 +52,27 @@ export function createSkinRuntime() {
     const body = document.body;
     const stops = [];
 
-    stops.push(ctx.slots.register({ name: "sidebar.brand.mark", priority: -10 }, skin.Mark));
-    stops.push(ctx.slots.register({ name: "sidebar.brand.name", priority: -10 }, skin.Name));
-    stops.push(ctx.slots.register({ name: "conversation.hero.brand.mark", priority: -10 }, skin.Mark));
+    // Slot contributions must be declaration-aware. A direct register() races
+    // the owning UI plugins during startup and fails when their child tables
+    // have not declared these slots yet. Nest inject() exactly like the
+    // official brand plugin so registration waits for all three declarations
+    // and is re-established if an owner fiber reloads.
+    stops.push(ctx.slots.inject("sidebar.brand.mark", () =>
+      ctx.slots.inject("sidebar.brand.name", () =>
+        ctx.slots.inject("conversation.hero.brand.mark", () => {
+          const registrations = [
+            ctx.slots.register({ name: "sidebar.brand.mark", priority: -10 }, skin.Mark),
+            ctx.slots.register({ name: "sidebar.brand.name", priority: -10 }, skin.Name),
+            ctx.slots.register({ name: "conversation.hero.brand.mark", priority: -10 }, skin.Mark),
+          ];
+          return () => {
+            for (let index = registrations.length - 1; index >= 0; index -= 1) {
+              registrations[index]();
+            }
+          };
+        })
+      )
+    ));
 
     const table = ctx.locale?.dicts?.get(HERO_NS);
     const originals = [];
