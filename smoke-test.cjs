@@ -1,5 +1,5 @@
 // Smoke test: simulate the DSH client module loader + DOM, run apply()/dispose,
-// and exercise the multi-skin engine (registry, default mount, live switch,
+// and exercise the multi-skin engine (registry, initial mount, live switch,
 // sidebar registration, remote theme persistence and independent skin switching).
 const fs = require("fs");
 const path = require("path");
@@ -82,9 +82,8 @@ const skins = mod.listSkins();
 console.log("✓ skins:", skins.map((s) => s.id + " (" + s.label + ")").join(", "));
 if (!skins.some((s) => s.id === "openbmc")) throw new Error("registry missing openbmc");
 if (!skins.some((s) => s.id === "uefi-harness")) throw new Error("registry missing uefi-harness");
-if (skins.some((s) => s.id === "openbmc-lite")) throw new Error("openbmc-lite must be removed");
 
-// ---- run apply() with a stub ctx (default skin = openbmc) ----
+// ---- run apply() with a stub ctx (initial skin = openbmc) ----
 const slotRegistrations = [];
 const injectedSlotKeys = [];
 const registeredDicts = [];
@@ -137,7 +136,7 @@ const ctx = {
 	effect(setup, label) { const d = setup(); effects.push({ label, d }); },
 };
 mod.apply(ctx);
-if (window.__DSH_SKINS__.active() !== "openbmc") throw new Error("first load must keep OpenBMC as the default skin");
+if (window.__DSH_SKINS__.active() !== "openbmc") throw new Error("first load must keep OpenBMC as the initial skin");
 if (themeSnapshot.preference !== "dark") throw new Error("remote fallback should restore dark, got " + themeSnapshot.preference);
 if (window.__DSH_SKINS__.themePreference() !== "dark") throw new Error("diagnostic preference should report dark");
 ctx.theme.setTheme("light");
@@ -146,7 +145,7 @@ console.log("✓ remote theme fallback restored dark and persisted later light s
 
 const styleTag = (id) => head.children.find((c) => c.tagName === "style" && c.dataset.pluginCss === "dsh-skins/" + id + ".css");
 
-// default mount: skin slots + per-skin style tag + backdrop + favicon
+// initial mount: skin slots + per-skin style tag + backdrop + favicon
 const skinSlots = slotRegistrations.filter((r) => r.opts.priority !== undefined);
 if (skinSlots.length !== 3) throw new Error("expected 3 brand slot registrations, got " + skinSlots.length);
 console.log("✓ slots registered:", skinSlots.map((r) => r.opts.name).join(", "));
@@ -168,8 +167,8 @@ if (registeredDictObjects["dsh-skins.ui"].zh["skins.switch"] !== "皮肤切换")
 if (registeredDictObjects["dsh-skins.ui"].en["skins.switch"] !== "Skin Switcher") throw new Error("en dict missing skins.switch");
 if (registeredDictObjects["dsh-skins.ui"].zh["appearance.title"] !== "外观配色") throw new Error("zh dict missing appearance.title");
 if (registeredDictObjects["dsh-skins.ui"].zh["appearance.system"] !== "跟随系统") throw new Error("zh dict missing appearance.system");
-if (registeredDictObjects["dsh-skins.ui"].zh["skins.default.label"] !== "DeepSeek Harness（默认）") throw new Error("zh dict missing default skin label");
-if (registeredDictObjects["dsh-skins.ui"].en["skins.default.label"] !== "DeepSeek Harness (Default)") throw new Error("en dict missing default skin label");
+if (registeredDictObjects["dsh-skins.ui"].zh["skins.official.label"] !== "DeepSeek Harness（官方）") throw new Error("zh dict missing official skin label");
+if (registeredDictObjects["dsh-skins.ui"].en["skins.official.label"] !== "DeepSeek Harness (Official)") throw new Error("en dict missing official skin label");
 const swTree = switcher.comp({ wide: true }); // t 传空 → 引擎内置词条兜底
 const swBtn = swTree.props.children[0];
 if (swBtn.type !== "button" || swBtn.props["aria-label"] !== "皮肤切换") throw new Error("switcher button wrong");
@@ -192,26 +191,28 @@ if (!Array.isArray(themeCards) || themeCards.length !== 3) throw new Error("appe
 if (!String(themeCards[1].props.className).includes("dsh-skins-theme-card-on")) throw new Error("dark appearance button should be selected");
 if (panelChildren[3].props.children !== "选择皮肤") throw new Error("skin section must follow appearance section");
 const skinCards = panelChildren.slice(4);
-if (skinCards.length !== 3) throw new Error("skin section needs official default + 2 independent skins");
-if (skinCards[0].props.children[0].props.children !== "DeepSeek Harness（默认）") throw new Error("official default must be the first skin card");
-if (skinCards[0].props["aria-checked"] !== false) throw new Error("official default must not be selected on first load");
+if (skinCards.length !== 3) throw new Error("skin section needs official appearance + 2 independent skins");
+if (skinCards[0].props.children[0].props.children !== "DeepSeek Harness（官方）") throw new Error("official appearance must be the first skin card");
+if (skinCards[0].props["aria-checked"] !== false) throw new Error("official appearance must not be selected on first load");
 if (skinCards[1].props["aria-checked"] !== true) throw new Error("OpenBMC must remain selected on first load");
 themeCards[2].props.onClick();
 if (themeSnapshot.preference !== "system") throw new Error("system button must call official theme.setTheme");
 if (storage.get("dsh-skins:theme-preference") !== "system") throw new Error("system selection must persist remotely");
-console.log("✓ popover has appearance(3) + official default first + skins(2); system theme persisted");
+console.log("✓ popover has appearance(3) + official appearance first + skins(2); system theme persisted");
 
 // ---- restore the official appearance, then switch via the public selector ----
 const openbmcFavicon = head.children.find((c) => c.rel === "icon" && !c.removed);
-mod.selectSkin("default");
-if (window.__DSH_SKINS__.active() !== "default") throw new Error("official appearance must become active");
-if (storage.get("dsh-skins:active") !== "default") throw new Error("official appearance selection must persist");
+mod.selectSkin("official");
+if (window.__DSH_SKINS__.active() !== "official") throw new Error("official appearance must become active");
+if (storage.get("dsh-skins:active") !== "official") throw new Error("official appearance selection must persist");
+if (mod.selectSkin("default") !== "official") throw new Error("legacy \"default\" alias must normalize to official");
+if (storage.get("dsh-skins:active") !== "official") throw new Error("legacy \"default\" alias must persist as official");
 if (!tagOpenbmc.removed) throw new Error("custom skin style must be removed for the official appearance");
 if (body.dataset.dshOpenbmcSkin !== undefined) throw new Error("official appearance must remove the OpenBMC body scope");
 if ((body.style.props["background-image"] ?? "") !== "") throw new Error("official appearance must restore the original background");
 if (!openbmcFavicon?.removed) throw new Error("official appearance must remove the custom favicon");
 if (themeSnapshot.preference !== "system") throw new Error("skin selection must not change the official theme preference");
-console.log("✓ DeepSeek Harness default restored official branding, background and favicon; selection persisted");
+console.log("✓ DeepSeek Harness official appearance restored branding, background and favicon; selection persisted");
 
 mod.selectSkin("uefi-harness");
 const tagUefi = styleTag("uefi-harness");

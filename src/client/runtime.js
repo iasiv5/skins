@@ -1,6 +1,7 @@
 const SKIN_STORAGE_KEY = "dsh-skins:active";
 const SKIN_URL_PARAM = "skin";
-const DEFAULT_SKIN_ID = "default";
+const OFFICIAL_SKIN_ID = "official";
+const LEGACY_OFFICIAL_ALIAS = "default";
 const HERO_NS = "conversation";
 const HERO_KEY = "hero.headline";
 const BACKDROP_PROPERTIES = [
@@ -23,8 +24,8 @@ export function createSkinRuntime() {
     if (!skin || typeof skin.id !== "string" || skin.id.length === 0) {
       throw new Error("[dsh-skins] every skin needs a non-empty id");
     }
-    if (skin.id === DEFAULT_SKIN_ID) {
-      throw new Error(`[dsh-skins] skin id "${DEFAULT_SKIN_ID}" is reserved for the official appearance`);
+    if (skin.id === OFFICIAL_SKIN_ID || skin.id === LEGACY_OFFICIAL_ALIAS) {
+      throw new Error(`[dsh-skins] skin id "${skin.id}" is reserved for the official appearance`);
     }
     if (skins.has(skin.id)) throw new Error(`[dsh-skins] duplicate skin id "${skin.id}"`);
     skins.set(skin.id, skin);
@@ -38,20 +39,28 @@ export function createSkinRuntime() {
     });
   }
 
+  function normalizeChoiceId(id) {
+    return id === LEGACY_OFFICIAL_ALIAS ? OFFICIAL_SKIN_ID : id;
+  }
+
   function isKnownChoice(id) {
-    return id === DEFAULT_SKIN_ID || skins.has(id);
+    return id === OFFICIAL_SKIN_ID || skins.has(id);
   }
 
   function resolveSelectedId() {
     try {
       const query = window.location?.search;
       const fromUrl = query ? new URLSearchParams(query).get(SKIN_URL_PARAM) : null;
-      if (fromUrl && isKnownChoice(fromUrl)) {
-        localStorage.setItem(SKIN_STORAGE_KEY, fromUrl);
-        return fromUrl;
+      const normalizedUrl = normalizeChoiceId(fromUrl);
+      if (normalizedUrl && isKnownChoice(normalizedUrl)) {
+        localStorage.setItem(SKIN_STORAGE_KEY, normalizedUrl);
+        return normalizedUrl;
       }
-      const stored = localStorage.getItem(SKIN_STORAGE_KEY);
-      if (stored && isKnownChoice(stored)) return stored;
+      const stored = normalizeChoiceId(localStorage.getItem(SKIN_STORAGE_KEY));
+      if (stored && isKnownChoice(stored)) {
+        localStorage.setItem(SKIN_STORAGE_KEY, stored);
+        return stored;
+      }
     } catch {}
     // Preserve the existing first-install behavior: OpenBMC remains the
     // fallback until the user explicitly chooses the official appearance.
@@ -170,28 +179,29 @@ export function createSkinRuntime() {
   }
 
   function select(id) {
-    const skin = skins.get(id);
-    if (id !== DEFAULT_SKIN_ID && !skin) {
-      throw new Error(`[dsh-skins] unknown skin "${id}" — available: ${[DEFAULT_SKIN_ID, ...order].join(", ")}`);
+    const normalizedId = normalizeChoiceId(id);
+    const skin = skins.get(normalizedId);
+    if (normalizedId !== OFFICIAL_SKIN_ID && !skin) {
+      throw new Error(`[dsh-skins] unknown skin "${id}" — available: ${[OFFICIAL_SKIN_ID, ...order].join(", ")}`);
     }
-    try { localStorage.setItem(SKIN_STORAGE_KEY, id); } catch {}
-    if (selectedId === id) return id;
+    try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
+    if (selectedId === normalizedId) return normalizedId;
 
     unmount();
-    if (id === DEFAULT_SKIN_ID) {
-      selectedId = DEFAULT_SKIN_ID;
-      announce(DEFAULT_SKIN_ID);
+    if (normalizedId === OFFICIAL_SKIN_ID) {
+      selectedId = OFFICIAL_SKIN_ID;
+      announce(OFFICIAL_SKIN_ID);
     } else {
       mount(skin);
     }
-    return id;
+    return normalizedId;
   }
 
   function apply(nextCtx) {
     ctx = nextCtx;
     const id = resolveSelectedId();
-    if (id === DEFAULT_SKIN_ID) {
-      selectedId = DEFAULT_SKIN_ID;
+    if (id === OFFICIAL_SKIN_ID) {
+      selectedId = OFFICIAL_SKIN_ID;
     } else {
       const skin = skins.get(id) ?? skins.get(order[0]);
       if (!skin) throw new Error("[dsh-skins] no skins registered");
@@ -204,7 +214,7 @@ export function createSkinRuntime() {
   }
 
   return {
-    defaultId: DEFAULT_SKIN_ID,
+    officialId: OFFICIAL_SKIN_ID,
     register,
     list,
     select,
