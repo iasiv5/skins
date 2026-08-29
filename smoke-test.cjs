@@ -212,7 +212,7 @@ activeLocale = "en";
 const openbmcEn = mod.listSkins().find((s) => s.id === "openbmc");
 const uefiEn = mod.listSkins().find((s) => s.id === "uefi-harness");
 if (!openbmcEn.description.includes("Ribbon mark") || openbmcEn.description.includes("飘带")) throw new Error("en openbmc description missing: " + openbmcEn.description);
-if (!uefiEn.description.includes("Chip mark") || uefiEn.description.includes("固件") || uefiEn.description.includes("占位")) throw new Error("en uefi description missing: " + uefiEn.description);
+if (!uefiEn.description.includes("cube mark") || uefiEn.description.includes("固件") || uefiEn.description.includes("占位")) throw new Error("en uefi description missing: " + uefiEn.description);
 activeLocale = "zh";
 
 // unified card style: every description is a "mark · backdrop · palette" triple

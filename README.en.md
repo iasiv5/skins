@@ -60,7 +60,7 @@ This section answers: which skins exist and what each feels like.
 |---|---|---|
 | `official` | built-in option | DeepSeek mark · default backdrop · brand palette |
 | `openbmc` | full skin | Ribbon mark · storm-wing backdrop · ice-blue palette |
-| `uefi-harness` | placeholder skin | Chip mark · gradient backdrop · violet-blue palette |
+| `uefi-harness` | placeholder skin | Official cube mark · gradient backdrop · violet-blue palette |
 
 - `official` restores the official DeepSeek Harness branding, backdrop and favicon, while keeping the skin switcher and the official light/dark palettes.
 - `openbmc` is the default skin. "Official" only means restoring the official interface; it is not the first-load choice.
@@ -68,7 +68,7 @@ This section answers: which skins exist and what each feels like.
 
 ![OpenBMC, light](docs/assets/openbmc-light.webp)
 
-- `uefi-harness` is a placeholder skin: the architecture and interactions come first, the real design lands later.
+- `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots now carry the UEFI Forum's official logo, and the final design lands later.
 
 ## The skin switcher
 
@@ -216,7 +216,7 @@ In the browser on the DSH host machine (loopback), the preference is persisted b
 - The tab-title rebrand depends on the official `DocumentTitle` projector's fixed copy `DeepSeek Harness` and its ` — ` separator; if that projector changes, only the tab product segment is affected — the rest of the interface keeps working.
 - Brand slogans are swapped through the current DSH locale dictionary interface and restored on unmount; re-review after DSH locale upgrades.
 - Other skin plugins may also touch the body backdrop, brand slots or favicon; avoid enabling multiple visual skin plugins at the same time.
-- `uefi-harness` is an architecture-and-interaction placeholder, not the final UEFI brand design.
+- The `uefi-harness` mark is the UEFI Forum's official trademark (the red cube, from uefi.org's published uefi_logo_red.gif, embedded as vector paths traced via Wikimedia Commons "Logo of the UEFI Forum.svg"); it is used solely to identify the skin, and all rights remain with the UEFI Forum.
 
 ## License
 

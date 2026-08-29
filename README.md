@@ -60,7 +60,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 |---|---|---|
 | `official` | 内置选项 | 还其正印 · 素卷玄青 · 一如本貌 |
 | `openbmc` | 正式皮肤 | 绶带凌风 · 风雷入画 · 缥碧盈卷 |
-| `uefi-harness` | 占位皮肤 | 方寸藏芯 · 流霞渐染 · 绀青成韵 |
+| `uefi-harness` | 占位皮肤 | 官方立方标 · 流霞渐染 · 绀青成韵 |
 
 - `official` 恢复 DeepSeek Harness 官方品牌、背景与 favicon，并保留皮肤切换器与官方明暗配色。
 - `openbmc` 是默认皮肤。「官方」只表示恢复官方界面，不是首次加载的选择。
@@ -68,7 +68,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 
 ![OpenBMC 亮色](docs/assets/openbmc-light.webp)
 
-- `uefi-harness` 是占位皮肤：先立架构与交互，等待正式设计替换。
+- `uefi-harness` 是占位皮肤：架构与交互先行，品牌位已换上 UEFI Forum 官方标志，等待正式设计接手。
 
 ## 皮肤切换器
 
@@ -216,7 +216,7 @@ dsh plugin --profile web add link:<本仓库路径>
 - 标签页品牌段替换依赖官方 `DocumentTitle` 投影器的固定文案「DeepSeek Harness」与「 — 」分隔符；投影器实现变化时只影响标签页品牌段，其余界面不受影响。
 - 品牌标语经当前 DSH locale 字典接口替换，皮肤卸载时恢复；升级 DSH locale 实现后需要复核。
 - 其他皮肤插件也可能修改 body 背景、品牌位或 favicon；应避免同时启用多个视觉皮肤插件。
-- `uefi-harness` 是架构与交互占位皮肤，不代表正式 UEFI 品牌设计。
+- `uefi-harness` 的标志为 UEFI Forum 官方商标（红色立方体，源自 uefi.org 发布的 uefi_logo_red.gif，经 Wikimedia Commons「Logo of the UEFI Forum.svg」矢量描摹嵌入），仅作标识用途，权利归 UEFI Forum 所有。
 
 ## License
 
