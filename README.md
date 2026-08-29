@@ -68,7 +68,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 
 ![OpenBMC 亮色](docs/assets/openbmc-light.webp)
 
-- `uefi-harness` 是占位皮肤：架构与交互先行，品牌位已换上 UEFI Forum 官方标志，等待正式设计接手。
+- `uefi-harness` 是占位皮肤：架构与交互先行，品牌位用 UEFI Forum 官方标志，背景铺鎏金电路板原画，等待正式设计接手。
 
 ## 皮肤切换器
 

@@ -334,12 +334,12 @@ mod.selectSkin("uefi-harness");
 const tagUefi = styleTag("uefi-harness");
 if (!tagUefi || tagUefi.removed) throw new Error("UEFI skin style tag missing after switch");
 const bgUefi = body.style.props["background-image"] || "";
-if (bgUefi.includes("url(")) throw new Error("dummy UEFI backdrop must not contain a wallpaper url");
-if (!bgUefi.includes("radial-gradient")) throw new Error("dummy UEFI backdrop should be gradients");
+if (!bgUefi.includes("url(")) throw new Error("UEFI backdrop must carry the gilded circuit-board wallpaper url");
+if (!bgUefi.includes("linear-gradient")) throw new Error("UEFI backdrop must stack a veil scrim over the wallpaper");
 if (body.dataset.dshOpenbmcSkin !== undefined || body.dataset.dshUefiHarness !== "") throw new Error("UEFI body scope not active");
 const skinSlotsAfterSwitch = slotRegistrations.filter((r) => r.opts.priority !== undefined);
 if (skinSlotsAfterSwitch.length !== 6) throw new Error("brand slots should re-register after switch (3+3), got " + skinSlotsAfterSwitch.length);
-console.log("✓ switched to independent UEFI Harness via public selector; backdrop = gradients");
+console.log("✓ switched to independent UEFI Harness via public selector; backdrop = gilded circuit art + veil scrim");
 if (document.title !== "标题实验 — UEFI Harness") throw new Error("uefi mount must rebrand the session-aware tab title, got " + document.title);
 console.log("✓ UEFI body scope attr after switch:", body.dataset.dshUefiHarness === "");
 

@@ -60,7 +60,7 @@ This section answers: which skins exist and what each feels like.
 |---|---|---|
 | `official` | built-in option | DeepSeek mark · default backdrop · brand palette |
 | `openbmc` | full skin | Ribbon mark · storm-wing backdrop · ice-blue palette |
-| `uefi-harness` | placeholder skin | Cube mark · gradient backdrop · violet-blue palette |
+| `uefi-harness` | placeholder skin | Cube mark · gilded backdrop · violet-blue palette |
 
 - `official` restores the official DeepSeek Harness branding, backdrop and favicon, while keeping the skin switcher and the official light/dark palettes.
 - `openbmc` is the default skin. "Official" only means restoring the official interface; it is not the first-load choice.
@@ -68,7 +68,7 @@ This section answers: which skins exist and what each feels like.
 
 ![OpenBMC, light](docs/assets/openbmc-light.webp)
 
-- `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots now carry the UEFI Forum's official logo, and the final design lands later.
+- `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots carry the UEFI Forum's official logo, a gilded circuit-board photo serves as the backdrop, and the final design lands later.
 
 ## The skin switcher
 
