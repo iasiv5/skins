@@ -60,7 +60,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 |---|---|---|
 | `official` | 内置选项 | 还其正印 · 素卷玄青 · 一如本貌 |
 | `openbmc` | 正式皮肤 | 绶带凌风 · 风雷入画 · 缥碧盈卷 |
-| `uefi-harness` | 占位皮肤 | 官方立方标 · 流霞渐染 · 绀青成韵 |
+| `uefi-harness` | 占位皮肤 | 赤玺凝方 · 流霞渐染 · 绀青成韵 |
 
 - `official` 恢复 DeepSeek Harness 官方品牌、背景与 favicon，并保留皮肤切换器与官方明暗配色。
 - `openbmc` 是默认皮肤。「官方」只表示恢复官方界面，不是首次加载的选择。

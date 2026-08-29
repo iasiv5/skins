@@ -124,7 +124,7 @@ body[data-dsh-uefi-harness] [data-streaming] {
     id: "uefi-harness",
     label: "UEFI Harness",
     description: {
-      zh: "官方立方标 · 流霞渐染 · 绀青成韵",
+      zh: "赤玺凝方 · 流霞渐染 · 绀青成韵",
       en: "Official cube mark · gradient backdrop · violet-blue palette",
     },
     bodyAttr: "dshUefiHarness",
