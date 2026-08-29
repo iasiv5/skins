@@ -18,10 +18,12 @@
  * Usage:
  *   node scripts/capture-previews.mjs --probe                 # inspect only
  *   node scripts/capture-previews.mjs                         # full capture
+ *   node scripts/capture-previews.mjs --skin tgcf --gate      # release gate assertions
  * Options:
  *   --url <base>   default http://127.0.0.1:3080
  *   --out <dir>    default docs/assets
- *   --skin <id>    default openbmc
+ *   --skin <id>    default openbmc (output names follow the skin id)
+ *   --gate         run the semi-automated release-gate assertions and exit
  */
 import { chromium } from "playwright-core";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -38,6 +40,7 @@ const baseUrl = option("--url", "http://127.0.0.1:3080");
 const outDir = option("--out", "docs/assets");
 const skin = option("--skin", "openbmc");
 const probe = flag("--probe");
+const gate = flag("--gate");
 
 const VIEWPORT = { width: 1600, height: 1000 };
 const WEBP_QUALITY = 0.82;
@@ -195,7 +198,58 @@ if (probe) {
   process.exit(0);
 }
 
-// ---- full capture: OpenBMC dark / light + switcher close-up ----
+// ---- gate: semi-automated release assertions (design §13) ----
+// Run against a GUI with the 1.0.0 plugin installed:
+//   node scripts/capture-previews.mjs --skin tgcf --gate
+if (gate) {
+  const failures = [];
+  const check = (ok, label) => {
+    console.log(`${ok ? "✓" : "✗"} ${label}`);
+    if (!ok) failures.push(label);
+  };
+  const { context: gctx, page: gpage } = await newPage("dark");
+  await startEmptySession(gpage);
+
+  // 1. Every catalog skin card exposes a keyboard-focusable gear.
+  await openSwitcher(gpage);
+  const gears = gpage.locator(".dsh-skins-pz-gear");
+  check(await gears.count() === 3, `personalization gear on all 3 catalog skins (got ${await gears.count()})`);
+  await gears.first().focus();
+  check(await gears.first().evaluate((node) => node === document.activeElement), "gear is keyboard focusable");
+
+  // 2. Gear opens the personalization panel; Escape returns to the list.
+  await gpage.keyboard.press("Enter");
+  await gpage.waitForSelector(".dsh-skins-pz", { timeout: 5_000 });
+  check(true, "personalization panel opens from the gear");
+  await gpage.keyboard.press("Escape");
+  await gpage.waitForTimeout(300);
+  check(await gpage.locator(".dsh-skins-pz").count() === 0, "Escape closes back to the skin list");
+  await closeSwitcher(gpage);
+
+  // 3. tgcf branding: favicon swap + rebranded tab title.
+  const title = await gpage.title();
+  check(title.includes(skin === "tgcf" ? "天官赐福" : skin), `tab title rebranded (${title})`);
+  const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
+  check(typeof favicon === "string" && favicon.length > 0, "custom favicon link present");
+
+  // 4. Personalization panel shot for records (docs/assets/<skin>-personalize).
+  await openSwitcher(gpage);
+  await gpage.locator(".dsh-skins-pz-gear").last().click();
+  await gpage.waitForSelector(".dsh-skins-pz", { timeout: 5_000 });
+  await writeShot(`${skin}-personalize.webp`, await toWebp(gpage, await gpage.screenshot()));
+  await closeSwitcher(gpage);
+
+  await gctx.close();
+  await browser.close();
+  if (failures.length > 0) {
+    console.error(`GATE FAILED: ${failures.length} assertion(s)`);
+    process.exit(1);
+  }
+  console.log("GATE PASSED");
+  process.exit(0);
+}
+
+// ---- full capture: <skin> dark / light + switcher close-up ----
 const { context, page } = await newPage("dark");
 
 const startedEmpty = await startEmptySession(page);
@@ -212,13 +266,13 @@ const originalTheme = await selectedThemeIndex(page);
 console.log(`original appearance card index: ${originalTheme}`);
 await closeSwitcher(page);
 
-// 1. OpenBMC, dark
+// 1. <skin>, dark
 await clickThemeCard(page, 1);
-await writeShot("openbmc-dark.webp", await toWebp(page, await page.screenshot()));
+await writeShot(`${skin}-dark.webp`, await toWebp(page, await page.screenshot()));
 
-// 2. OpenBMC, light
+// 2. <skin>, light
 await clickThemeCard(page, 0);
-await writeShot("openbmc-light.webp", await toWebp(page, await page.screenshot()));
+await writeShot(`${skin}-light.webp`, await toWebp(page, await page.screenshot()));
 
 // 3. Switcher close-up (dark): popover AND its 皮肤切换 trigger button in one frame
 await clickThemeCard(page, 1);
@@ -235,7 +289,7 @@ clip.height = Math.min(VIEWPORT.height, Math.ceil(Math.max(pop.y + pop.height, b
 const inside = (box) => box.x >= clip.x && box.y >= clip.y && box.x + box.width <= clip.x + clip.width && box.y + box.height <= clip.y + clip.height;
 console.log(`close-up clip ${JSON.stringify(clip)}; pop in frame: ${inside(pop)}, button in frame: ${inside(btn)}`);
 if (!inside(pop) || !inside(btn)) throw new Error("close-up framing failed: popover or trigger button outside the clip");
-await writeShot("switcher-dark.webp", await toWebp(page, await page.screenshot({ clip })));
+await writeShot(`${skin}-switcher-dark.webp`, await toWebp(page, await page.screenshot({ clip })));
 await closeSwitcher(page);
 
 // restore the appearance the user had before we touched it

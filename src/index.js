@@ -6,6 +6,8 @@ import { mountUpdateRoutes } from "./host/routes.js";
 import { createRestartScheduler } from "./host/restart.js";
 import { createSelfUpdater } from "./host/self-update.js";
 import { runDshPlugin } from "./host/runner.js";
+import { createPersonalizationStore } from "./host/personalization/store.js";
+import { mountPersonalizationRoutes } from "./host/personalization-routes.js";
 
 export const name = "dsh-skins";
 
@@ -35,12 +37,25 @@ export function apply(ctx) {
       runner: runDshPlugin,
     });
     const restart = createRestartScheduler(ctx.get("appExit"));
-    hostContext.effect(() => mountUpdateRoutes(hostContext, {
-      updater,
-      restart,
-      agents: hostContext.agents,
-      trustedHosts: hostContext.webRuntime.trustedHosts,
-    }), "dsh-skins: self-update routes");
+    const personalization = createPersonalizationStore({
+      dataDir: join(root, "dsh-skins"),
+    });
+    hostContext.effect(() => {
+      const disposeUpdate = mountUpdateRoutes(hostContext, {
+        updater,
+        restart,
+        agents: hostContext.agents,
+        trustedHosts: hostContext.webRuntime.trustedHosts,
+      });
+      const disposePersonalization = mountPersonalizationRoutes(hostContext, {
+        store: personalization,
+        trustedHosts: hostContext.webRuntime.trustedHosts,
+      });
+      return () => {
+        disposePersonalization();
+        disposeUpdate();
+      };
+    }, "dsh-skins: self-update routes");
   });
 }
 

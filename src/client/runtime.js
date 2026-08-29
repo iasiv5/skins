@@ -1,16 +1,17 @@
+import { projectSkin } from "./personalization/projector.js";
+
 const SKIN_STORAGE_KEY = "dsh-skins:active";
 const SKIN_URL_PARAM = "skin";
 const OFFICIAL_SKIN_ID = "official";
 const LEGACY_OFFICIAL_ALIAS = "default";
 const HERO_NS = "conversation";
 const HERO_KEY = "hero.headline";
-const BACKDROP_PROPERTIES = [
-  "background-image",
-  "background-position",
-  "background-size",
-  "background-attachment",
-  "background-repeat",
-];
+const ACTIVE_EVENT = "dsh-skins:active-changed";
+
+/** dataset camelCase → attribute name: dshTgcfSkin → data-dsh-tgcf-skin. */
+function datasetAttribute(key) {
+  return `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+}
 
 /** Create the registry and single-mounted-skin runtime. */
 export function createSkinRuntime() {
@@ -19,6 +20,7 @@ export function createSkinRuntime() {
   let ctx = null;
   let mounted = null;
   let selectedId = null;
+  let personalization = null; // { getOverrides, assetResolver, metaProvider }
 
   function register(skin) {
     if (!skin || typeof skin.id !== "string" || skin.id.length === 0) {
@@ -41,12 +43,6 @@ export function createSkinRuntime() {
     }
   }
 
-  /**
-   * Resolve a skin's localized text. Skins may declare `label`/`description`
-   * either as a locale-neutral string (brand names) or as `{ zh, en }` maps;
-   * resolution order is the active locale, then en, then zh — matching the
-   * official locale runtime's fallback chain.
-   */
   function localizedText(value) {
     if (value === null || value === undefined) return "";
     if (typeof value === "string") return value;
@@ -91,139 +87,211 @@ export function createSkinRuntime() {
 
   function announce(id) {
     if (typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
-      window.dispatchEvent(new CustomEvent("dsh-skins:changed", { detail: id }));
+      window.dispatchEvent(new CustomEvent(ACTIVE_EVENT, { detail: id }));
     }
   }
 
-  function mount(skin) {
-    if (!ctx) throw new Error("[dsh-skins] mount before apply");
-    const body = document.body;
-    const stops = [];
+  // -- personalization plumbing ----------------------------------------------
 
-    // Slot contributions must be declaration-aware. A direct register() races
-    // the owning UI plugins during startup and fails when their child tables
-    // have not declared these slots yet. Nest inject() exactly like the
-    // official brand plugin so registration waits for all three declarations
-    // and is re-established if an owner fiber reloads.
-    stops.push(ctx.slots.inject("sidebar.brand.mark", () =>
-      ctx.slots.inject("sidebar.brand.name", () =>
-        ctx.slots.inject("conversation.hero.brand.mark", () => {
-          const registrations = [
-            ctx.slots.register({ name: "sidebar.brand.mark", priority: -10 }, skin.Mark),
-            ctx.slots.register({ name: "sidebar.brand.name", priority: -10 }, skin.Name),
-            ctx.slots.register({ name: "conversation.hero.brand.mark", priority: -10 }, skin.Mark),
-          ];
-          return () => {
-            for (let index = registrations.length - 1; index >= 0; index -= 1) {
-              registrations[index]();
-            }
-          };
-        })
-      )
-    ));
-
-    const table = ctx.locale?.dicts?.get(HERO_NS);
-    const originals = [];
-    if (table) {
-      for (const [locale, entries] of table) {
-        if (entries && entries[HERO_KEY] !== undefined) {
-          originals.push([entries, entries[HERO_KEY]]);
-          entries[HERO_KEY] = skin.slogans[locale] ?? skin.slogans.zh;
-        }
-      }
+  function overridesFor(skinId) {
+    try {
+      return personalization?.getOverrides?.(skinId) ?? {};
+    } catch {
+      return {};
     }
-    stops.push(() => {
-      for (const [entries, value] of originals) entries[HERO_KEY] = value;
-    });
+  }
 
-    const tagId = `dsh-skins/${skin.id}.css`;
-    let tag = document.querySelector(`style[data-plugin-css=${JSON.stringify(tagId)}]`);
+  function projectionContext() {
+    return {
+      assetResolver: personalization?.assetResolver,
+      metaProvider: personalization?.metaProvider,
+    };
+  }
+
+  // -- effects execution (transactional; design §3/§7.1) ----------------------
+
+  function styleTag(id, content) {
+    let tag = document.querySelector(`style[data-plugin-css=${JSON.stringify(id)}]`);
     if (tag === null) {
       tag = document.createElement("style");
       tag.dataset.plugin = "dsh-skins";
-      tag.dataset.pluginCss = tagId;
-      tag.textContent = skin.css;
+      tag.dataset.pluginCss = id;
+      tag.textContent = content;
       document.head.appendChild(tag);
     }
-    stops.push(() => tag.remove());
+    return tag;
+  }
 
-    const previous = new Map();
-    for (const property of BACKDROP_PROPERTIES) {
-      previous.set(property, body.style.getPropertyValue(property));
+  function backdropCss(effects) {
+    const backdrop = effects.backdrop;
+    if (backdrop === null) return null;
+    const selector = `body[${datasetAttribute(effects.bodyAttribute)}]`;
+    const darkSelector = `${selector}[data-ds-dark-theme]`;
+    const rules = [];
+    if (backdrop.imageLight !== null || backdrop.imageDark !== null) {
+      const blur = backdrop.blur > 0
+        ? `filter:blur(${backdrop.blur}px);transform:scale(1.02);`
+        : "";
+      rules.push(`${selector}::before{content:"";position:fixed;inset:0;z-index:-1;`
+        + `background-image:${backdrop.imageLight ?? "none"};background-size:cover;`
+        + `background-position:center;background-repeat:no-repeat;pointer-events:none;${blur}}`);
+      if (backdrop.imageDark !== null && backdrop.imageDark !== backdrop.imageLight) {
+        rules.push(`${darkSelector}::before{background-image:${backdrop.imageDark}}`);
+      }
     }
-    body.dataset[skin.bodyAttr] = "";
+    if (backdrop.overlayLight !== null || backdrop.overlayDark !== null) {
+      rules.push(`${selector}::after{content:"";position:fixed;inset:0;z-index:-1;`
+        + `background-image:${backdrop.overlayLight ?? "none"};pointer-events:none;}`);
+      if (backdrop.overlayDark !== null && backdrop.overlayDark !== backdrop.overlayLight) {
+        rules.push(`${darkSelector}::after{background-image:${backdrop.overlayDark}}`);
+      }
+    }
+    return rules.length === 0 ? null : rules.join("\n");
+  }
 
-    const setBackdrop = () => {
-      const dark = body.dataset.dsDarkTheme !== undefined;
-      const image = skin.art === ""
-        ? dark ? skin.placeholderDark : skin.placeholderLight
-        : dark ? skin.scrimDark : skin.scrimLight;
-      body.style.setProperty("background-image", image);
-      body.style.setProperty("background-position", "center");
-      body.style.setProperty("background-size", "cover");
-      body.style.setProperty("background-attachment", "fixed");
-      body.style.setProperty("background-repeat", "no-repeat");
+  function variablesCss(effects) {
+    if (effects.cssVariables === null) return null;
+    const selector = `body[${datasetAttribute(effects.bodyAttribute)}]`;
+    const darkSelector = `${selector}[data-ds-dark-theme]`;
+    const light = [];
+    const dark = [];
+    for (const [name, pair] of Object.entries(effects.cssVariables)) {
+      light.push(`${name}:${pair.light}`);
+      dark.push(`${name}:${pair.dark}`);
+    }
+    return `${selector}{${light.join(";")}}\n${darkSelector}{${dark.join(";")}}`;
+  }
+
+  function mountEffects(skin, effects) {
+    if (!ctx) throw new Error("[dsh-skins] mount before apply");
+    const body = document.body;
+    const stops = [];
+    const unwind = () => {
+      for (let index = stops.length - 1; index >= 0; index -= 1) {
+        try { stops[index](); } catch {}
+      }
     };
-    setBackdrop();
-    const observer = new MutationObserver(setBackdrop);
-    observer.observe(body, { attributes: true, attributeFilter: ["data-ds-dark-theme"] });
 
-    const removedIcons = [...document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]')];
-    removedIcons.forEach((element) => element.remove());
-    const favicon = document.createElement("link");
-    favicon.rel = "icon";
-    favicon.type = skin.faviconMime;
-    favicon.href = skin.favicon;
-    document.head.append(favicon);
+    try {
+      // Slot contributions must be declaration-aware (see design history):
+      // nested inject() waits for the owning UI plugins exactly like the
+      // official brand plugin.
+      stops.push(ctx.slots.inject("sidebar.brand.mark", () =>
+        ctx.slots.inject("sidebar.brand.name", () =>
+          ctx.slots.inject("conversation.hero.brand.mark", () => {
+            const registrations = [
+              ctx.slots.register({ name: "sidebar.brand.mark", priority: -10 }, skin.Mark),
+              ctx.slots.register({ name: "sidebar.brand.name", priority: -10 }, skin.Name),
+              ctx.slots.register({ name: "conversation.hero.brand.mark", priority: -10 }, skin.Mark),
+            ];
+            return () => {
+              for (let index = registrations.length - 1; index >= 0; index -= 1) {
+                registrations[index]();
+              }
+            };
+          })
+        )
+      ));
 
-    // Browser chrome identity, cooperatively. The official DocumentTitle
-    // projector (dsh-client-ui-renderer) owns the tab title and re-asserts
-    // "<session> — DeepSeek Harness" after mount and on every session change,
-    // so a plain mount-time write loses the race (verified in-browser: the
-    // renderer rewrites it ~75ms later). Instead of fighting the projector,
-    // rebrand only the product segment and keep the session segment intact;
-    // unmount swaps the official brand back in place.
-    const officialBrand = "DeepSeek Harness";
-    const brand = skin.title === undefined || skin.title === null || skin.title === ""
-      ? null
-      : localizedText(skin.title);
-    let titleObserver = null;
-    if (brand !== null) {
-      const withBrand = (text) => {
-        if (text === officialBrand) return brand;
-        if (text.endsWith(" — " + officialBrand)) return text.slice(0, text.length - officialBrand.length) + brand;
-        return null; // foreign writer or already rebranded: leave untouched
-      };
-      const rebrand = () => {
-        const next = withBrand(document.title);
-        if (next !== null && next !== document.title) document.title = next;
-      };
-      rebrand();
-      titleObserver = new MutationObserver(rebrand);
-      titleObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
-    }
+      if (effects.slogans !== null) {
+        const table = ctx.locale?.dicts?.get(HERO_NS);
+        const originals = [];
+        if (table) {
+          for (const [locale, entries] of table) {
+            if (entries && entries[HERO_KEY] !== undefined) {
+              originals.push([entries, entries[HERO_KEY]]);
+              entries[HERO_KEY] = effects.slogans[locale] ?? effects.slogans.zh;
+            }
+          }
+        }
+        stops.push(() => {
+          for (const [entries, value] of originals) entries[HERO_KEY] = value;
+        });
+      }
 
-    stops.push(() => {
-      delete body.dataset[skin.bodyAttr];
-      observer.disconnect();
-      for (const [property, value] of previous) body.style.setProperty(property, value);
-      favicon.remove();
-      for (const element of removedIcons) document.head.append(element);
-      if (titleObserver !== null) {
-        titleObserver.disconnect();
-        if (document.title === brand) document.title = officialBrand;
-        else if (document.title.endsWith(" — " + brand)) {
-          document.title = document.title.slice(0, document.title.length - brand.length) + officialBrand;
+      if (effects.staticCss !== null) {
+        const tag = styleTag(`dsh-skins/${skin.id}.css`, effects.staticCss);
+        stops.push(() => tag.remove());
+      }
+
+      const backdrop = backdropCss(effects);
+      if (backdrop !== null) {
+        const tag = styleTag(`dsh-skins/${skin.id}.backdrop.css`, backdrop);
+        stops.push(() => tag.remove());
+      }
+
+      const variables = variablesCss(effects);
+      if (variables !== null) {
+        const tag = styleTag(`dsh-skins/${skin.id}.vars.css`, variables);
+        stops.push(() => tag.remove());
+      }
+
+      if (effects.decorations !== null) {
+        for (const decoration of effects.decorations) {
+          const tag = styleTag(`dsh-skins/${skin.id}.decor.${decoration.key}.css`, decoration.css);
+          stops.push(() => tag.remove());
         }
       }
-    });
 
-    mounted = {
-      skin,
-      stop() {
-        for (const stop of stops) stop();
-      },
-    };
+      if (effects.tokenOverrides !== null && typeof ctx.theme?.overrideTokens === "function") {
+        const disposeTokens = ctx.theme.overrideTokens(`dsh-skins/${skin.id}`, effects.tokenOverrides);
+        stops.push(disposeTokens);
+      }
+
+      const hadAttribute = body.dataset[effects.bodyAttribute] !== undefined;
+      body.dataset[effects.bodyAttribute] = "";
+
+      if (effects.favicon !== null) {
+        const removedIcons = [...document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]')];
+        removedIcons.forEach((element) => element.remove());
+        const favicon = document.createElement("link");
+        favicon.rel = "icon";
+        favicon.type = effects.favicon.mime;
+        favicon.href = effects.favicon.href;
+        document.head.append(favicon);
+        stops.push(() => {
+          favicon.remove();
+          for (const element of removedIcons) document.head.append(element);
+        });
+      }
+
+      // Browser chrome identity, cooperatively: rebrand only the product
+      // segment and keep the session segment intact (see design history —
+      // the official DocumentTitle projector rewrites ~75ms after mount).
+      const officialBrand = "DeepSeek Harness";
+      const brand = effects.titleBrand === null || effects.titleBrand === "" ? null : effects.titleBrand;
+      let titleObserver = null;
+      if (brand !== null) {
+        const withBrand = (text) => {
+          if (text === officialBrand) return brand;
+          if (text.endsWith(" — " + officialBrand)) return text.slice(0, text.length - officialBrand.length) + brand;
+          return null; // foreign writer or already rebranded: leave untouched
+        };
+        const rebrand = () => {
+          const next = withBrand(document.title);
+          if (next !== null && next !== document.title) document.title = next;
+        };
+        rebrand();
+        titleObserver = new MutationObserver(rebrand);
+        titleObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
+      }
+
+      stops.push(() => {
+        if (!hadAttribute) delete body.dataset[effects.bodyAttribute];
+        if (titleObserver !== null) {
+          titleObserver.disconnect();
+          if (document.title === brand) document.title = officialBrand;
+          else if (brand !== null && document.title.endsWith(" — " + brand)) {
+            document.title = document.title.slice(0, document.title.length - brand.length) + officialBrand;
+          }
+        }
+      });
+    } catch (error) {
+      unwind();
+      throw error;
+    }
+
+    mounted = { skin, effects, stop: unwind };
     selectedId = skin.id;
     announce(skin.id);
   }
@@ -234,6 +302,51 @@ export function createSkinRuntime() {
     mounted = null;
   }
 
+  /** Project + mount a skin; false = fail-closed (design §3 layer 3). */
+  function mountSkin(skin) {
+    const result = projectSkin(skin, overridesFor(skin.id), projectionContext());
+    if (result.effects === null) {
+      console.warn(`[dsh-skins] skin "${skin.id}" failed to project; keeping the official appearance`);
+      return false;
+    }
+    if (result.degraded !== "none") {
+      console.warn(`[dsh-skins] skin "${skin.id}" projected with degraded defaults (${result.degraded})`);
+    }
+    mountEffects(skin, result.effects);
+    return true;
+  }
+
+  /**
+   * Hot-update the active skin's effects after a config change. A failed
+   * projection keeps the current effects; a failed replacement restores the
+   * previous known-good set (design §7.1).
+   */
+  function updateActive() {
+    if (mounted === null) return { applied: false, reason: "none" };
+    const skin = mounted.skin;
+    const previousEffects = mounted.effects;
+    const result = projectSkin(skin, overridesFor(skin.id), projectionContext());
+    if (result.effects === null) {
+      console.warn("[dsh-skins] config hot-update failed to project; keeping current effects");
+      return { applied: false, reason: "projection-failed" };
+    }
+    unmount();
+    try {
+      mountEffects(skin, result.effects);
+      return { applied: true, degraded: result.degraded };
+    } catch (error) {
+      console.warn("[dsh-skins] effects replacement failed; restoring previous effects", error);
+      try {
+        mountEffects(skin, previousEffects);
+      } catch (restoreError) {
+        console.error("[dsh-skins] effects restore failed; falling back to official", restoreError);
+        selectedId = OFFICIAL_SKIN_ID;
+        announce(OFFICIAL_SKIN_ID);
+      }
+      return { applied: false, reason: "mount-failed" };
+    }
+  }
+
   function select(id) {
     const normalizedId = normalizeChoiceId(id);
     const skin = skins.get(normalizedId);
@@ -241,16 +354,24 @@ export function createSkinRuntime() {
       throw new Error(`[dsh-skins] unknown skin "${id}" — available: ${[OFFICIAL_SKIN_ID, ...order].join(", ")}`);
     }
     try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
-    if (selectedId === normalizedId) return normalizedId;
+    if (selectedId === normalizedId && mounted !== null) return normalizedId;
 
     unmount();
     if (normalizedId === OFFICIAL_SKIN_ID) {
       selectedId = OFFICIAL_SKIN_ID;
       announce(OFFICIAL_SKIN_ID);
+    } else if (mountSkin(skin)) {
+      // mountEffects set selectedId and announced.
     } else {
-      mount(skin);
+      selectedId = OFFICIAL_SKIN_ID;
+      announce(OFFICIAL_SKIN_ID);
     }
     return normalizedId;
+  }
+
+  function setPersonalization(provider) {
+    personalization = provider ?? null;
+    if (mounted !== null) updateActive();
   }
 
   function apply(nextCtx) {
@@ -261,7 +382,7 @@ export function createSkinRuntime() {
     } else {
       const skin = skins.get(id) ?? skins.get(order[0]);
       if (!skin) throw new Error("[dsh-skins] no skins registered");
-      mount(skin);
+      if (!mountSkin(skin)) selectedId = OFFICIAL_SKIN_ID;
     }
     return () => {
       unmount();
@@ -276,6 +397,8 @@ export function createSkinRuntime() {
     select,
     apply,
     unmount,
+    updateActive,
+    setPersonalization,
     active: () => selectedId,
   };
 }

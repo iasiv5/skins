@@ -33,8 +33,21 @@ test("generated Host bundle mounts and disposes updater routes through DSH servi
 
   assert.equal(name, "dsh-skins");
   apply(ctx);
-  assert.deepEqual(routes.map((route) => route.path), ["/dsh-skins/update", "/dsh-skins/restart"]);
+  assert.deepEqual(routes.map((route) => route.path), [
+    "/dsh-skins/update",
+    "/dsh-skins/restart",
+    "/dsh-skins/config",
+    "/dsh-skins/recovery",
+    "/dsh-skins/library",
+    "/dsh-skins/library",
+    "/dsh-skins/assets",
+    "/dsh-skins/theme/import",
+    "/dsh-skins/theme/export",
+  ]);
+  assert.deepEqual(routes.map((route) => route.kind), [
+    "exact", "exact", "exact", "exact", "exact", "prefix", "prefix", "exact", "prefix",
+  ]);
   assert.equal(typeof pluginDispose, "function");
   pluginDispose();
-  assert.equal(routeDisposals, 2);
+  assert.equal(routeDisposals, 9);
 });

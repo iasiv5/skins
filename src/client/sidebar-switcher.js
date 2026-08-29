@@ -1,5 +1,7 @@
 import { createUpdatePanel } from "./update-panel.js";
 import { DICTS, NS, formatTemplate } from "./dicts.js";
+import { createPersonalizationPanel } from "./personalization/panel.js";
+import { getSkinSchema } from "../shared/personalization/catalog.js";
 
 const TAG_ID = "dsh-skins/sidebar.css";
 const THEME_CHOICES = [
@@ -47,13 +49,87 @@ const CSS = [
   '.dsh-skins-update-spinner{width:16px;height:16px;border:2px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);border-radius:50%;animation:dsh-skins-spin .8s linear infinite}',
   '@keyframes dsh-skins-spin{to{transform:rotate(360deg)}}',
   '@media (prefers-reduced-motion:reduce){.dsh-skins-update-spinner{animation:none}}',
+  // -- personalization gear + panel -------------------------------------------
+  '.dsh-skins-pop-card-row{display:flex;width:100%;min-width:0;gap:6px;align-items:stretch}',
+  '.dsh-skins-pop-card-row .dsh-skins-pop-card{flex:1;min-width:0}',
+  '.dsh-skins-pz-gear{position:relative;flex:none;align-self:center;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
+  '.dsh-skins-pz-gear:hover,.dsh-skins-pz-gear:focus-visible,.dsh-skins-pz-gear.touch{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsh-alias-interactive-bg-hover)}',
+  '.dsh-skins-pz-gear svg{width:16px;height:16px}',
+  '.dsh-skins-pz-gear-dot{position:absolute;top:-2px;right:-2px;width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-brand-primary,#C3272B);border:1.5px solid var(--dsw-alias-bg-overlay,#fff)}',
+  '.dsh-skins-pz{display:flex;flex-direction:column;gap:10px}',
+  '.dsh-skins-pz-head{display:flex;align-items:center;gap:8px}',
+  '.dsh-skins-pz-head .dsh-skins-pop-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none}',
+  '.dsh-skins-pz-row{display:flex;flex-direction:column;gap:6px}',
+  '.dsh-skins-pz-label{font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);font-weight:500}',
+  '.dsh-skins-pz-fields{display:flex;flex-direction:column;gap:6px}',
+  '.dsh-skins-pz-colors{flex-direction:row;gap:14px}',
+  '.dsh-skins-pz-color{display:flex;align-items:center;gap:6px}',
+  '.dsh-skins-pz-color input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);cursor:pointer}',
+  '.dsh-skins-pz-range{display:flex;align-items:center;gap:8px}',
+  '.dsh-skins-pz-range input[type=range]{flex:1;min-width:0;accent-color:var(--dsw-alias-brand-primary)}',
+  '.dsh-skins-pz-range output{flex:none;min-width:44px;text-align:right;font-size:12px;color:var(--dsw-alias-label-secondary)}',
+  '.dsh-skins-pz-input{box-sizing:border-box;width:100%;height:32px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}',
+  '.dsh-skins-pz-btn{flex:none;height:28px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}',
+  '.dsh-skins-pz-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+  '.dsh-skins-pz-btn:disabled{opacity:.55;cursor:default}',
+  '.dsh-skins-pz-group{display:flex;flex-direction:column;gap:6px}',
+  '.dsh-skins-pz-thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}',
+  '.dsh-skins-pz-thumb{position:relative;aspect-ratio:4/3;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:var(--dsw-alias-bg-layer-2);cursor:pointer}',
+  '.dsh-skins-pz-thumb img{width:100%;height:100%;object-fit:cover}',
+  '.dsh-skins-pz-thumb.on{border-color:var(--dsw-alias-brand-primary)}',
+  '.dsh-skins-pz-thumb:disabled{opacity:.55;cursor:default}',
+  '.dsh-skins-pz-muted{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}',
+  '.dsh-skins-pz-strip{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);font-size:12px}',
+  '.dsh-skins-pz-status{display:flex;align-items:center;gap:8px;justify-content:space-between}',
+  '.dsh-skins-pz-warn{border-color:var(--dsw-alias-state-warning,#c77d00)}',
+  '.dsh-skins-pz-asset{display:flex;align-items:center;gap:8px}',
+  '.dsh-skins-pz-asset img{flex:none;width:44px;height:33px;border-radius:6px;object-fit:cover;border:1px solid var(--dsw-alias-border-l2)}',
+  '.dsh-skins-pz-asset-copy{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.dsh-skins-pz-gallery{display:flex;flex-direction:column;gap:8px}',
 ].join("\n");
 
-export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom }) {
+export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, configClient, skinsById }) {
   const UpdatePanel = createUpdatePanel(ctx, { jsx, react });
 
   function fallbackTranslate(key, params = {}) {
     return formatTemplate(DICTS.zh[key] ?? key, params);
+  }
+
+  /** Locale-aware translate for the personalization surface. */
+  function localeTranslate(key, params = {}) {
+    try {
+      const text = ctx.locale?.translate?.(NS, key, params);
+      if (typeof text === "string" && text !== key) return text;
+    } catch {}
+    return fallbackTranslate(key, params);
+  }
+
+  function labelFor(skinId) {
+    if (skinId === runtime.officialId) return localeTranslate("skins.official.label");
+    const listed = runtime.list().find((skin) => skin.id === skinId);
+    return listed?.label ?? skinId;
+  }
+
+  function builtinAssetsFor(skinId) {
+    return skinsById?.(skinId)?.builtinAssets ?? {};
+  }
+
+  const PersonalizationPanel = configClient
+    ? createPersonalizationPanel({
+      jsx, react, configClient, tr: localeTranslate, builtinAssetsFor, labelFor,
+    })
+    : null;
+
+  function GearIcon() {
+    return jsx("svg", {
+      width: 16, height: 16, viewBox: "0 0 24 24", fill: "none",
+      xmlns: "http://www.w3.org/2000/svg", "aria-hidden": "true",
+      children: jsx("path", {
+        d: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"
+          + "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+        stroke: "currentColor", strokeWidth: 1.6, strokeLinejoin: "round",
+      }),
+    });
   }
 
   function SwitcherIcon() {
@@ -91,8 +167,17 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom }) {
     const [open, setOpen] = react.useState(false);
     const [activeId, setActiveId] = react.useState(runtime.active);
     const [box, setBox] = react.useState(null);
+    const [personalizeId, setPersonalizeId] = react.useState(null);
     const [themePreference, setThemePreference] = react.useState(() => ctx.theme?.getTheme?.().preference ?? "system");
     const buttonRef = react.useRef(null);
+
+    // Closing the popover flushes pending personalization writes (design Y6).
+    react.useEffect(() => {
+      if (open) return undefined;
+      setPersonalizeId(null);
+      configClient?.flushNow();
+      return undefined;
+    }, [open]);
 
     react.useEffect(() => {
       if (!open) return undefined;
@@ -148,35 +233,64 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom }) {
       },
       ...runtime.list(),
     ];
-    const skinCards = choices.map((skin) => jsx("button", {
-      type: "button",
-      role: "menuitemradio",
-      "aria-checked": activeId === skin.id,
-      className: `dsh-skins-pop-card${activeId === skin.id ? " dsh-skins-pop-card-on" : ""}`,
-      onClick: () => {
-        runtime.select(skin.id);
-        setActiveId(skin.id);
-      },
-      children: [
-        jsx("span", { className: "dsh-skins-pop-card-label", children: skin.label }),
-        jsx("span", { className: "dsh-skins-pop-card-desc", children: skin.description }),
-      ],
-    }, skin.id));
+    const skinCards = choices.map((skin) => {
+      const personalizable = configClient !== null && getSkinSchema(skin.id) !== null;
+      const card = jsx("button", {
+        type: "button",
+        role: "menuitemradio",
+        "aria-checked": activeId === skin.id,
+        className: `dsh-skins-pop-card${activeId === skin.id ? " dsh-skins-pop-card-on" : ""}`,
+        onClick: () => {
+          runtime.select(skin.id);
+          setActiveId(skin.id);
+        },
+        children: [
+          jsx("span", { className: "dsh-skins-pop-card-label", children: skin.label }),
+          jsx("span", { className: "dsh-skins-pop-card-desc", children: skin.description }),
+        ],
+      }, skin.id);
+      if (!personalizable) return card;
+      const hasOverride = Object.keys(configClient.effectiveOverrides(skin.id)).length > 0;
+      return jsx("div", { className: "dsh-skins-pop-card-row", children: [
+        card,
+        jsx("button", {
+          type: "button",
+          className: "dsh-skins-pz-gear",
+          "aria-label": localeTranslate("personalization.title"),
+          title: localeTranslate("personalization.title"),
+          "aria-expanded": personalizeId === skin.id,
+          onClick: () => {
+            setActiveId(skin.id);
+            setPersonalizeId(personalizeId === skin.id ? null : skin.id);
+          },
+          children: [
+            jsx(GearIcon, {}),
+            hasOverride ? jsx("span", { className: "dsh-skins-pz-gear-dot", "aria-hidden": "true" }) : null,
+          ],
+        }, `${skin.id}-gear`),
+      ] }, skin.id);
+    });
 
+    const showPersonalization = personalizeId !== null && PersonalizationPanel !== null;
     const panel = open && box && typeof document !== "undefined"
       ? reactDom.createPortal(jsx("div", {
         className: "dsh-skins-pop",
         role: "dialog",
-        "aria-label": tr("skins.switch"),
+        "aria-label": showPersonalization ? localeTranslate("personalization.title") : tr("skins.switch"),
         style: { left: box.left, bottom: box.bottom },
-        children: [
-          jsx("div", { className: "dsh-skins-pop-title", children: tr("appearance.title") }),
-          jsx("div", { className: "dsh-skins-theme-grid", children: themeCards }),
-          jsx("div", { className: "dsh-skins-pop-divider", "aria-hidden": "true" }),
-          jsx("div", { className: "dsh-skins-pop-title", children: tr("skins.title") }),
-          ...skinCards,
-          jsx(UpdatePanel, { open, tr }),
-        ],
+        children: showPersonalization
+          ? jsx(PersonalizationPanel, {
+            skinId: personalizeId,
+            onBack: () => setPersonalizeId(null),
+          })
+          : [
+            jsx("div", { key: "appearance", className: "dsh-skins-pop-title", children: tr("appearance.title") }),
+            jsx("div", { key: "grid", className: "dsh-skins-theme-grid", children: themeCards }),
+            jsx("div", { key: "d1", className: "dsh-skins-pop-divider", "aria-hidden": "true" }),
+            jsx("div", { key: "skins", className: "dsh-skins-pop-title", children: tr("skins.title") }),
+            ...skinCards,
+            jsx(UpdatePanel, { key: "update", open, tr }),
+          ],
       }), document.body)
       : null;
 

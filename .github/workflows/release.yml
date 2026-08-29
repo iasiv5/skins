@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release after every gate passes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Verify tag ↔ package version identity
+        run: node scripts/verify-release.mjs "${GITHUB_REF_NAME}"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - name: Verify generated Host and client bundles are committed
+        run: git diff --exit-code -- lib/index.js lib/client.js
+      - name: Pack the install artifact
+        run: mkdir -p .artifacts && pnpm pack --pack-destination .artifacts
+      - name: Minimal host load test from the packed artifact
+        run: |
+          set -eu
+          tar -xzf .artifacts/dsh-skins-*.tgz
+          node --check package/lib/index.js
+          node --input-type=module -e "
+            import { apply, name } from './package/lib/index.js';
+            if (name !== 'dsh-skins') throw new Error('bad package name: ' + name);
+            if (typeof apply !== 'function') throw new Error('apply() missing');
+            console.log('artifact host load OK:', name);
+          "
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .artifacts/dsh-skins-*.tgz
+          generate_release_notes: true

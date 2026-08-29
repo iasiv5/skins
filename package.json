@@ -1,7 +1,7 @@
 {
   "name": "dsh-skins",
   "description": "Modular DSH Web skin pack with official fallback, OpenBMC and UEFI appearances, and verified stable-Release updates",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "homepage": "https://github.com/iasiv5/skins#readme",
   "repository": {
     "type": "git",
@@ -16,8 +16,10 @@
     "deepseek-harness",
     "skin",
     "theme",
+    "personalization",
     "openbmc",
-    "uefi"
+    "uefi",
+    "tgcf"
   ],
   "packageManager": "pnpm@10.34.5",
   "type": "module",

@@ -134,6 +134,18 @@ const ctx = {
 		setTheme(id) {
 			themeSnapshot = { ...themeSnapshot, preference: id, active: { id: id === "system" ? "light" : id }, revision: themeSnapshot.revision + 1 };
 			for (const fn of eventListeners.get("theme/change") ?? []) fn(themeSnapshot);
+		},
+		// Minimal overrideTokens stub mirroring the Host contract: one layer
+		// per source, disposer removes exactly that layer.
+		_layers: new Map(),
+		overrideTokens(source, tokens) {
+			for (const value of Object.values(tokens)) {
+				if (typeof value !== "object" || typeof value.light !== "string" || typeof value.dark !== "string") {
+					throw new Error("overrideTokens requires {light,dark} pairs");
+				}
+			}
+			this._layers.set(source, tokens);
+			return () => this._layers.delete(source);
 		}
 	},
 	on(event, fn) {
@@ -162,9 +174,15 @@ const tagOpenbmc = styleTag("openbmc");
 if (!tagOpenbmc) throw new Error("openbmc style tag missing");
 console.log("✓ per-skin style tag:", tagOpenbmc.dataset.pluginCss);
 console.log("✓ body scope attr:", body.dataset.dshOpenbmcSkin === "");
-const bgFull = body.style.props["background-image"] || "";
-if (!bgFull.includes("url(")) throw new Error("openbmc backdrop should contain the wallpaper url");
-console.log("✓ background-image set:", bgFull.slice(0, 60) + "...");
+// Backdrop is delivered through a dedicated pseudo-element stylesheet whose
+// selector is scoped to the body attribute; the wallpaper url must appear in
+// the light layer and be swapped under [data-ds-dark-theme].
+const backdropTag = styleTag("openbmc.backdrop");
+if (!backdropTag) throw new Error("openbmc backdrop stylesheet missing");
+if (!backdropTag.textContent.includes("url(")) throw new Error("openbmc backdrop should contain the wallpaper url");
+if (!backdropTag.textContent.includes("body[data-dsh-openbmc-skin]::before")) throw new Error("backdrop must paint through the fixed pseudo layer");
+if (!backdropTag.textContent.includes("[data-ds-dark-theme]::before")) throw new Error("backdrop must swap layers for dark mode");
+console.log("✓ backdrop pseudo stylesheet:", backdropTag.textContent.slice(0, 60) + "...");
 console.log("✓ favicon link appended:", head.children.some((c) => c.rel === "icon" && !c.removed));
 if (document.title !== "OpenBMC Harness") throw new Error("openbmc mount must rebrand the bare tab title, got " + document.title);
 console.log("✓ tab title:", document.title);
@@ -235,29 +253,53 @@ if (switcher.opts.label() !== "Skin Switcher") throw new Error("slot label must 
 activeLocale = "zh";
 console.log("✓ skin descriptions and slot label localize with the active UI locale");
 
-// Force the popover open: useState order = open, active skin, box, theme preference.
-stateOverrides = [true, "openbmc", { left: 20, bottom: 50 }, "dark"];
+// Force the popover open. useState order: open, active skin, box,
+// personalize view, theme preference.
+stateOverrides = [true, "openbmc", { left: 20, bottom: 50 }, null, "dark"];
 const openTree = switcher.comp({ wide: true });
 const portal = openTree.props.children[1];
 if (!portal?.$$portal) throw new Error("open switcher should render a portal");
 const panel = portal.children;
 const panelChildren = panel.props.children;
-if (panelChildren[0].props.children !== "外观配色") throw new Error("appearance section must be first");
-const themeCards = panelChildren[1].props.children;
+if (!Array.isArray(panelChildren)) throw new Error("list view must render a section array");
+
+// Semantic node location (no positional coupling to section order).
+const nodeByText = (text) => panelChildren.find((node) => node?.props?.children === text);
+const appearanceTitle = nodeByText("外观配色");
+if (!appearanceTitle) throw new Error("appearance section missing");
+const themeGrid = panelChildren.find((node) => String(node?.props?.className ?? "").includes("dsh-skins-theme-grid"));
+if (!themeGrid) throw new Error("theme grid missing");
+const themeCards = themeGrid.props.children;
 if (!Array.isArray(themeCards) || themeCards.length !== 3) throw new Error("appearance section needs 3 buttons");
 if (!String(themeCards[1].props.className).includes("dsh-skins-theme-card-on")) throw new Error("dark appearance button should be selected");
-if (panelChildren[3].props.children !== "选择皮肤") throw new Error("skin section must follow appearance section");
-const skinCards = panelChildren.slice(4, 7);
-const updatePanelNode = panelChildren[7];
-if (skinCards.length !== 3) throw new Error("skin section needs official appearance + 2 independent skins");
+if (!nodeByText("选择皮肤")) throw new Error("skin section must follow appearance section");
+
+// Skin cards may be bare buttons (official) or card rows with a personalization
+// gear (catalog skins) — collect the primary card and the gear of each row.
+const skinCards = [];
+const gears = [];
+for (const node of panelChildren) {
+  const className = String(node?.props?.className ?? "");
+  if (className.includes("dsh-skins-pop-card-row")) {
+    const [card, gear] = node.props.children;
+    skinCards.push(card);
+    gears.push(gear);
+  } else if (className.includes("dsh-skins-pop-card")) {
+    skinCards.push(node);
+  }
+}
+const updatePanelNode = panelChildren.find((node) => typeof node?.type === "function");
+if (skinCards.length !== 4) throw new Error("skin section needs official appearance + 3 skins, got " + skinCards.length);
+if (gears.length !== 3) throw new Error("every catalog skin exposes a personalization gear, got " + gears.length);
 if (typeof updatePanelNode?.type !== "function") throw new Error("update panel must render after the skin cards");
 if (skinCards[0].props.children[0].props.children !== "DeepSeek Harness（官方）") throw new Error("official appearance must be the first skin card");
 if (skinCards[0].props["aria-checked"] !== false) throw new Error("official appearance must not be selected on first load");
 if (skinCards[1].props["aria-checked"] !== true) throw new Error("OpenBMC must remain selected on first load");
+if (skinCards[3].props.children[0].props.children !== "天官赐福 · 百无禁忌") throw new Error("tgcf must be registered and listed last");
 themeCards[2].props.onClick();
 if (themeSnapshot.preference !== "system") throw new Error("system button must call official theme.setTheme");
 if (storage.get("dsh-skins:theme-preference") !== "system") throw new Error("system selection must persist remotely");
-console.log("✓ popover has appearance(3) + official appearance first + skins(2); system theme persisted");
+console.log("✓ popover: appearance(3) + skins(4: official first, tgcf last) + gears(3); system theme persisted");
 
 // ---- update panel states: local development, available Release, up to date ----
 stateOverrides = [{
@@ -323,8 +365,8 @@ if (storage.get("dsh-skins:active") !== "official") throw new Error("official ap
 if (mod.selectSkin("default") !== "official") throw new Error("legacy \"default\" alias must normalize to official");
 if (storage.get("dsh-skins:active") !== "official") throw new Error("legacy \"default\" alias must persist as official");
 if (!tagOpenbmc.removed) throw new Error("custom skin style must be removed for the official appearance");
+if (!styleTag("openbmc.backdrop").removed) throw new Error("official appearance must remove the OpenBMC backdrop stylesheet");
 if (body.dataset.dshOpenbmcSkin !== undefined) throw new Error("official appearance must remove the OpenBMC body scope");
-if ((body.style.props["background-image"] ?? "") !== "") throw new Error("official appearance must restore the original background");
 if (!openbmcFavicon?.removed) throw new Error("official appearance must remove the custom favicon");
 if (document.title !== "标题实验 — DeepSeek Harness") throw new Error("official appearance must restore the official brand segment, got " + document.title);
 if (themeSnapshot.preference !== "system") throw new Error("skin selection must not change the official theme preference");
@@ -333,7 +375,7 @@ console.log("✓ DeepSeek Harness official appearance restored branding, backgro
 mod.selectSkin("uefi-harness");
 const tagUefi = styleTag("uefi-harness");
 if (!tagUefi || tagUefi.removed) throw new Error("UEFI skin style tag missing after switch");
-const bgUefi = body.style.props["background-image"] || "";
+const bgUefi = styleTag("uefi-harness.backdrop")?.textContent || "";
 if (!bgUefi.includes("url(")) throw new Error("UEFI backdrop must carry the gilded circuit-board wallpaper url");
 if (!bgUefi.includes("linear-gradient")) throw new Error("UEFI backdrop must stack a veil scrim over the wallpaper");
 if (body.dataset.dshOpenbmcSkin !== undefined || body.dataset.dshUefiHarness !== "") throw new Error("UEFI body scope not active");
@@ -342,6 +384,35 @@ if (skinSlotsAfterSwitch.length !== 6) throw new Error("brand slots should re-re
 console.log("✓ switched to independent UEFI Harness via public selector; backdrop = gilded circuit art + veil scrim");
 if (document.title !== "标题实验 — UEFI Harness") throw new Error("uefi mount must rebrand the session-aware tab title, got " + document.title);
 console.log("✓ UEFI body scope attr after switch:", body.dataset.dshUefiHarness === "");
+
+// ---- tgcf: personalization-aware skin, token layer + backdrop + hot-update ----
+mod.selectSkin("tgcf");
+if (window.__DSH_SKINS__.active() !== "tgcf") throw new Error("tgcf must become active");
+if (body.dataset.dshTgcfSkin !== "") throw new Error("tgcf body scope attr missing");
+const tgcfBackdrop = styleTag("tgcf.backdrop");
+if (!tgcfBackdrop || tgcfBackdrop.removed) throw new Error("tgcf backdrop stylesheet missing");
+if (!tgcfBackdrop.textContent.includes("data:image/svg+xml")) throw new Error("tgcf backdrop must embed the builtin lantern SVG");
+if (!tgcfBackdrop.textContent.includes("filter:blur(12px)")) throw new Error("tgcf backdrop must apply the default 12px wallpaper blur");
+if (!tgcfBackdrop.textContent.includes("linear-gradient(rgba(255,246,234,0.180)")) throw new Error("tgcf scrim overlay must derive from catalog defaults");
+const tgcfThemeLayer = ctx.theme._layers.get("dsh-skins/tgcf");
+if (!tgcfThemeLayer) throw new Error("tgcf must register a token override layer");
+if (tgcfThemeLayer["--dsw-alias-brand-primary"].light !== "#C3272B") throw new Error("accent default must map to the brand-primary token");
+if (tgcfThemeLayer["--dsw-specific-bubble"].dark !== "#8E2A2F") throw new Error("bubble default must map to the specific-bubble token");
+if (typeof tgcfThemeLayer["--dsw-alias-bg-base"].light !== "string" || !tgcfThemeLayer["--dsw-alias-bg-base"].light.startsWith("rgba(255,252,246,")) {
+	throw new Error("panel opacity must derive translucent panel bases");
+}
+if (document.title !== "标题实验 — 天官赐福") throw new Error("tgcf must rebrand the session title, got " + document.title);
+const tgcfDecor = styleTag("tgcf");
+if (!tgcfDecor || !tgcfDecor.textContent.includes("prefers-reduced-motion")) throw new Error("tgcf static css must ship ambient motion with a reduced-motion guard");
+console.log("✓ tgcf active: backdrop + tokens + title + ambient motion (reduced-motion guarded)");
+
+// hot-update: change overrides through the runtime's personalization hook,
+// then confirm the projected effects swap without touching the selection.
+mod.selectSkin("official");
+if (ctx.theme._layers.get("dsh-skins/tgcf")) throw new Error("switching to official must dispose the tgcf token layer");
+mod.selectSkin("tgcf");
+if (!ctx.theme._layers.get("dsh-skins/tgcf")) throw new Error("re-selecting tgcf must re-register the token layer");
+console.log("✓ token override layers dispose and re-register across skin switches");
 
 // unknown id must throw
 let threw = false;

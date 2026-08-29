@@ -52,7 +52,7 @@ If the install fails, send me the command output verbatim and retry at most once
 
 </details>
 
-## Three appearances
+## Four appearances
 
 This section answers: which skins exist and what each feels like.
 
@@ -61,6 +61,7 @@ This section answers: which skins exist and what each feels like.
 | `official` | built-in option | DeepSeek mark · default backdrop · brand palette |
 | `openbmc` | full skin | Ribbon mark · storm-wing backdrop · ice-blue palette |
 | `uefi-harness` | placeholder skin | Cube mark · gilded backdrop · violet-blue palette |
+| `tgcf` | full skin | A thousand lights · vermilion & gold · night shared bright |
 
 - `official` restores the official DeepSeek Harness branding, backdrop and favicon, while keeping the skin switcher and the official light/dark palettes.
 - `openbmc` is the default skin. "Official" only means restoring the official interface; it is not the first-load choice.
@@ -69,6 +70,21 @@ This section answers: which skins exist and what each feels like.
 ![OpenBMC, light](docs/assets/openbmc-light.webp)
 
 - `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots carry the UEFI Forum's official logo, a gilded circuit-board photo serves as the backdrop, and the final design lands later.
+- `tgcf` (Heaven Official's Blessing · No Taboos) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; every visual is original code-drawn SVG (lanterns & clouds / silver butterflies / gilded mountains / falling maples) and no official artwork is bundled. Vermilion-and-gold dark mode, pale-gold light mode, slogan "A thousand lights before the dawn".
+
+![TGCF, dark](docs/assets/tgcf-dark.webp)
+
+## Personalization
+
+This section answers: what each skin exposes, where settings live, and how to share them.
+
+Every skin card carries a gear button (with a dot when overrides exist) that opens that skin's personalization panel:
+
+- **Customizable fields** (fully open on `tgcf`; wallpaper-only on `openbmc` / `uefi-harness`): wallpaper (built-in motifs + a personal library), site icon, slogan (zh/en), tab title, accent / gold / bubble colors (one value per light/dark), panel opacity, background blur, scrim strength (light/dark).
+- **Personal library**: drop or upload PNG / JPEG / WebP / GIF (≤ 20MB each, GIF ≤ 12MP; animated WebP and SVG are rejected), shared by all skins; deleting a referenced image first lists the affected skins.
+- **Theme packages**: export the current configuration as a `.zip` (images included) and import it on another DSH to replicate; import shows a field-level preview first, and imported images are always re-identified and deduplicated by content.
+- **Storage & upgrades**: configuration and the library live under `$DSH_HOME/dsh-skins/` (isolated from the plugin install directory), so upgrades / rollbacks / one-click updates preserve them by construction; only overrides are stored, and new defaults flow to untouched fields.
+- **Safety design**: uploads pass magic-number validation and size caps; a damaged state file triggers recovery mode (rebuilds the library, never deletes images); concurrent field-level writes never clobber each other (last write wins per field).
 
 ## The skin switcher
 
@@ -83,7 +99,7 @@ The **Skin Switcher** popover at the bottom of the sidebar has two sections:
 
 When the sidebar is collapsed, the entry shows as a round palette icon. Choosing "Official" only undoes the extension skins — your light/dark/system preference is untouched. Multiple `sidebar.footer.action` entries stack vertically instead of overlapping.
 
-The URL switches skins too: `/?skin=official`, `/?skin=openbmc`, `/?skin=uefi-harness`. The choice is stored in `localStorage["dsh-skins:active"]`.
+The URL switches skins too: `/?skin=official`, `/?skin=openbmc`, `/?skin=uefi-harness`, `/?skin=tgcf`. The choice is stored in `localStorage["dsh-skins:active"]`.
 
 Console debug API:
 
@@ -166,8 +182,10 @@ export function createMySkin({ jsx }) {
 Then:
 
 1. add the matching import and `runtime.register(...)` call in `src/client/index.js`;
-2. reverse both when removing a skin;
-3. keep the id `official` and the compatibility alias `default` reserved — never for extension skins.
+2. declare the skin's fields (`fields[]` plus built-in assets) in `src/shared/personalization/catalog.js` — the personalization panel then appears automatically, driven by five field types (`text / color / image / select / range`) and three value scopes (`single / locale / colorScheme`);
+3. provide a pure `project(values, assets)` function on the skin factory when you need custom value→effects mapping; without one, the built-in adapter keeps byte-for-byte legacy behaviour;
+4. reverse both when removing a skin;
+5. keep the id `official` and the compatibility alias `default` reserved — never for extension skins.
 
 `label` and `description` accept either a locale-neutral string (brand names) or a `{ zh, en }` map, resolved as active locale → en → zh. Skin cards and `__DSH_SKINS__.list()` always report resolved strings, and `tests/dicts.test.mjs` keeps the zh/en dictionaries key- and placeholder-complete in both directions.
 
@@ -210,6 +228,12 @@ Verified with DSH Web `0.1.1-rc.2`. Later rc builds of the same series are expec
 **Does my appearance preference sync across browsers?**
 In the browser on the DSH host machine (loopback), the preference is persisted by the DSH Host and shared naturally. Other remote browsers keep the preference in their own `localStorage` — independent per browser, never overwritten.
 
+**Do personalization settings survive upgrades?**
+Yes. Configuration and the library live in the `$DSH_HOME/dsh-skins/` data directory; self-updates only replace the plugin install directory and physically cannot touch it — rollbacks preserve it too. Only disk-level damage can lose configuration, and even then recovery mode keeps the library images.
+
+**What is the theme-package format?**
+A store-only ZIP produced and consumed exclusively by this plugin (uncompressed, strictly validated); to share a look with a colleague, export and import.
+
 ## Known limits
 
 - The OpenBMC user-bubble outline relies on the version-specific class `.gdEzaW_bubble`; if that class changes, only the outline is affected — the token palette keeps working.
@@ -217,6 +241,7 @@ In the browser on the DSH host machine (loopback), the preference is persisted b
 - Brand slogans are swapped through the current DSH locale dictionary interface and restored on unmount; re-review after DSH locale upgrades.
 - Other skin plugins may also touch the body backdrop, brand slots or favicon; avoid enabling multiple visual skin plugins at the same time.
 - The `uefi-harness` mark is the UEFI Forum's official trademark (the red cube, from uefi.org's published uefi_logo_red.gif, embedded as vector paths traced via Wikimedia Commons "Logo of the UEFI Forum.svg"); it is used solely to identify the skin, and all rights remain with the UEFI Forum.
+- `tgcf` is an unofficial fan work: its name and imagery reference "Heaven Official's Blessing" with no affiliation with or authorization from the copyright holders (MXTX, bilibili, et al.); all bundled visuals are original drawings and no official artwork is included. Should a rights holder object, the skin will be republished under a neutral name (e.g. "A Thousand Lights · Vermilion & Gold").
 
 ## License
 

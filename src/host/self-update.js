@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { codedError } from "./errors.js";
+import { atomicWriteText } from "./atomic-write.js";
 
 export const PACKAGE_NAME = "dsh-skins";
 export const REPOSITORY = "iasiv5/skins";
@@ -92,13 +93,6 @@ export function resolveInstalledCommit(profileDir, spec) {
   if (importer === undefined) return null;
   const resolved = /https:\/\/codeload\.github\.com\/iasiv5\/skins\/tar\.gz\/([0-9a-f]{40})(?:[^\n]*)/i.exec(importer);
   return resolved === null ? null : resolved[1].toLowerCase();
-}
-
-function atomicWriteText(file, content) {
-  mkdirSync(dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.tmp`;
-  writeFileSync(temporary, content);
-  renameSync(temporary, file);
 }
 
 function readJson(file, fallback = null) {

@@ -52,7 +52,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 
 </details>
 
-## 三款外观
+## 四款外观
 
 本节回答：有哪些皮肤、各是什么气质。
 
@@ -61,6 +61,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 | `official` | 内置选项 | 还其正印 · 素卷玄青 · 一如本貌 |
 | `openbmc` | 正式皮肤 | 绶带凌风 · 风雷入画 · 缥碧盈卷 |
 | `uefi-harness` | 占位皮肤 | 赤玺凝方 · 流霞渐染 · 绀青成韵 |
+| `tgcf` | 正式皮肤 | 千灯引路 · 朱红鎏金 · 长夜同明 |
 
 - `official` 恢复 DeepSeek Harness 官方品牌、背景与 favicon，并保留皮肤切换器与官方明暗配色。
 - `openbmc` 是默认皮肤。「官方」只表示恢复官方界面，不是首次加载的选择。
@@ -69,6 +70,21 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 ![OpenBMC 亮色](docs/assets/openbmc-light.webp)
 
 - `uefi-harness` 是占位皮肤：架构与交互先行，品牌位用 UEFI Forum 官方标志，背景铺鎏金电路板原画，等待正式设计接手。
+- `tgcf`（天官赐福 · 百无禁忌）是**非官方粉丝作品**，与《天官赐福》版权方无关联、未获授权；全部视觉为原创代码绘制 SVG（祥云灯笼阵 / 银蝶群 / 金线山水 / 红枫落雨），不含任何官方素材。暗色朱红鎏金、亮色素白金线，出厂标语「千灯引路 · 长夜同明」。
+
+![TGCF 暗色](docs/assets/tgcf-dark.webp)
+
+## 个性化
+
+本节回答：每套皮肤能改什么、配置存在哪、怎么分享。
+
+每张皮肤卡右侧有齿轮按钮（有自定义时带圆点标记），打开该皮肤的个性化面板：
+
+- **可定制项**（`tgcf` 全量开放；`openbmc` / `uefi-harness` 开放壁纸）：壁纸（内置纹样 + 个人图库）、站点图标、标语（中英）、标签页标题、主色 / 鎏金辅色 / 气泡颜色（明暗各一档）、面板不透明度、背景模糊、遮罩强度（明暗）。
+- **个人图库**：拖入或上传 PNG / JPEG / WebP / GIF（单张 ≤ 20MB、GIF ≤ 12MP；动画 WebP 与 SVG 不收），所有皮肤共用；删除被引用的图片时会先列出受影响的皮肤。
+- **主题包**：导出当前配置为 `.zip`（含图片），在另一台 DSH 上导入即复刻；导入前显示字段级预览，导入的图片一律重新分配 ID 并按内容去重。
+- **存储与升级**：配置与图库存于 `$DSH_HOME/dsh-skins/`（与插件安装目录隔离），升级 / 回滚 / 一键更新天然保留；配置只存「改过什么」，新版默认值自动流向未修改的字段。
+- **安全设计**：上传走魔数校验与尺寸上限；配置状态损坏时进入恢复模式（只重建图库、绝不清除图片）；字段级并发写入互不覆盖（同字段最后写入胜）。
 
 ## 皮肤切换器
 
@@ -83,7 +99,7 @@ dsh plugin --profile web remove dsh-skins    # 卸载
 
 侧栏收起时，入口显示为圆形调色盘图标。选择「官方」只撤销扩展皮肤，不改动明暗偏好。多个 `sidebar.footer.action` 入口会纵向排列，避免重叠。
 
-URL 也能切皮肤：`/?skin=official`、`/?skin=openbmc`、`/?skin=uefi-harness`。选择保存在 `localStorage["dsh-skins:active"]`。
+URL 也能切皮肤：`/?skin=official`、`/?skin=openbmc`、`/?skin=uefi-harness`、`/?skin=tgcf`。选择保存在 `localStorage["dsh-skins:active"]`。
 
 控制台调试 API：
 
@@ -166,8 +182,10 @@ export function createMySkin({ jsx }) {
 然后：
 
 1. 在 `src/client/index.js` 中加入对应的 import 与 `runtime.register(...)`；
-2. 删除皮肤时反向操作；
-3. 保留 ID `official` 与兼容别名 `default`，不要用于扩展皮肤。
+2. 在 `src/shared/personalization/catalog.js` 中登记皮肤的字段声明（`fields[]` 与内置资产），即可自动获得个性化面板——支持 `text / color / image / select / range` 五类字段、`single / locale / colorScheme` 三种值作用域；
+3. 需要自定义「值 → 效果」映射时，在皮肤工厂上提供 `project(values, assets)` 纯函数；不提供则走与旧皮肤逐字节等价的内置适配器；
+4. 删除皮肤时反向操作；
+5. 保留 ID `official` 与兼容别名 `default`，不要用于扩展皮肤。
 
 `label` 与 `description` 接受语言中立的字符串（如品牌名）或 `{ zh, en }` 映射，解析顺序为当前语言 → en → zh。皮肤卡片与 `__DSH_SKINS__.list()` 始终返回解析后的字符串，中英词典由 `tests/dicts.test.mjs` 强制键与占位符双向对齐。
 
@@ -210,6 +228,12 @@ dsh plugin --profile web add link:<本仓库路径>
 **外观偏好在不同的浏览器间同步吗？**
 在 DSH 所在机器的浏览器（loopback）上，偏好由 DSH Host 持久化，天然共享。其他远程浏览器由插件将偏好存入本地 `localStorage`，各浏览器独立、互不覆盖。
 
+**个性化配置会随升级丢吗？**
+不会。配置与图库存放在 `$DSH_HOME/dsh-skins/` 数据目录，自更新只替换插件安装目录，物理上碰不到它；回滚同样保留。只有磁盘级损坏可能丢失配置——那时恢复模式仍会保住图库图片。
+
+**主题包是什么格式？**
+本插件自产自销的 store-only ZIP（不压缩、严格结构校验），不需要第三方解压工具支持；换个皮肤配色分享给同事，导出再导入即可。
+
 ## 已知边界
 
 - OpenBMC 用户气泡描边使用版本相关类 `.gdEzaW_bubble`；该类变化只影响描边，token 配色不受影响。
@@ -217,6 +241,7 @@ dsh plugin --profile web add link:<本仓库路径>
 - 品牌标语经当前 DSH locale 字典接口替换，皮肤卸载时恢复；升级 DSH locale 实现后需要复核。
 - 其他皮肤插件也可能修改 body 背景、品牌位或 favicon；应避免同时启用多个视觉皮肤插件。
 - `uefi-harness` 的标志为 UEFI Forum 官方商标（红色立方体，源自 uefi.org 发布的 uefi_logo_red.gif，经 Wikimedia Commons「Logo of the UEFI Forum.svg」矢量描摹嵌入），仅作标识用途，权利归 UEFI Forum 所有。
+- `tgcf` 为非官方粉丝作品：名称与意象取自《天官赐福》，与墨香铜臭、哔哩哔哩等版权方无任何关联，未获得授权；全部内置视觉为原创代码绘制，不含官方素材。若版权方提出异议，将以中性名称（如「千灯 · 朱红鎏金」）重新发布该皮肤。
 
 ## License
 

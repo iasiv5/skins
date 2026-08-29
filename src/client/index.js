@@ -1,8 +1,10 @@
 import { createSkinRuntime } from "./runtime.js";
 import { installSidebarSwitcher } from "./sidebar-switcher.js";
 import { installRemoteThemePersistence, readLocalThemePreference } from "./theme-persistence.js";
+import { createConfigClient } from "./personalization/config-client.js";
 import { createOpenBmcHarness } from "./skins/openbmc-harness/index.js";
 import { createUefiHarness } from "./skins/uefi-harness/index.js";
+import { createTgcfSkin } from "./skins/tgcf/index.js";
 
 window.__ModuleLoader__.load({
   id: "dsh-skins",
@@ -12,8 +14,44 @@ window.__ModuleLoader__.load({
     const reactDom = require("react-dom");
 
     const runtime = createSkinRuntime();
-    runtime.register(createOpenBmcHarness(jsxRuntime));
-    runtime.register(createUefiHarness(jsxRuntime));
+    const skinById = new Map();
+    for (const factory of [createOpenBmcHarness, createUefiHarness, createTgcfSkin]) {
+      const skin = factory(jsxRuntime);
+      skinById.set(skin.id, skin);
+      runtime.register(skin);
+    }
+
+    // Personalization plumbing (design §7.1): mount immediately on defaults,
+    // then hot-update when the config syncs — never block first paint.
+    const configClient = typeof fetch === "function" ? createConfigClient({}) : null;
+    if (configClient !== null) {
+      const assetResolver = (ref) => {
+        if (ref.kind === "builtin") {
+          const asset = skinById.get(ref.skinId)?.builtinAssets?.[ref.assetKey];
+          return asset ? { url: asset.url, mime: asset.mime } : null;
+        }
+        const meta = configClient.getState().library.find((entry) => entry.id === ref.id);
+        return meta
+          ? { url: `/dsh-skins/assets/${meta.id}.${meta.extension}`, mime: meta.mime }
+          : null;
+      };
+      const metaProvider = (id) => configClient.getState().library.find((entry) => entry.id === id) ?? null;
+      runtime.setPersonalization({
+        getOverrides: (skinId) => configClient.effectiveOverrides(skinId),
+        assetResolver,
+        metaProvider,
+      });
+      let lastOverridesKey = null;
+      configClient.onStateChange(() => {
+        const activeId = runtime.active();
+        if (activeId === runtime.officialId) return;
+        const key = JSON.stringify(configClient.effectiveOverrides(activeId));
+        if (key === lastOverridesKey) return;
+        lastOverridesKey = key;
+        runtime.updateActive();
+      });
+      configClient.boot();
+    }
 
     const inject = ["slots", "locale", "theme", "connection"];
 
@@ -26,6 +64,8 @@ window.__ModuleLoader__.load({
           jsx: jsxRuntime.jsx,
           react,
           reactDom,
+          configClient,
+          skinsById: (id) => skinById.get(id) ?? null,
         });
       } catch (error) {
         console.warn("[dsh-skins] sidebar switcher registration failed:", error);
@@ -37,6 +77,7 @@ window.__ModuleLoader__.load({
       select: runtime.select,
       active: runtime.active,
       themePreference: readLocalThemePreference,
+      personalization: configClient,
     };
 
     return {
