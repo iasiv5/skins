@@ -176,12 +176,46 @@ export function createSkinRuntime() {
     favicon.href = skin.favicon;
     document.head.append(favicon);
 
+    // Browser chrome identity, cooperatively. The official DocumentTitle
+    // projector (dsh-client-ui-renderer) owns the tab title and re-asserts
+    // "<session> — DeepSeek Harness" after mount and on every session change,
+    // so a plain mount-time write loses the race (verified in-browser: the
+    // renderer rewrites it ~75ms later). Instead of fighting the projector,
+    // rebrand only the product segment and keep the session segment intact;
+    // unmount swaps the official brand back in place.
+    const officialBrand = "DeepSeek Harness";
+    const brand = skin.title === undefined || skin.title === null || skin.title === ""
+      ? null
+      : localizedText(skin.title);
+    let titleObserver = null;
+    if (brand !== null) {
+      const withBrand = (text) => {
+        if (text === officialBrand) return brand;
+        if (text.endsWith(" — " + officialBrand)) return text.slice(0, text.length - officialBrand.length) + brand;
+        return null; // foreign writer or already rebranded: leave untouched
+      };
+      const rebrand = () => {
+        const next = withBrand(document.title);
+        if (next !== null && next !== document.title) document.title = next;
+      };
+      rebrand();
+      titleObserver = new MutationObserver(rebrand);
+      titleObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
+    }
+
     stops.push(() => {
       delete body.dataset[skin.bodyAttr];
       observer.disconnect();
       for (const [property, value] of previous) body.style.setProperty(property, value);
       favicon.remove();
       for (const element of removedIcons) document.head.append(element);
+      if (titleObserver !== null) {
+        titleObserver.disconnect();
+        if (document.title === brand) document.title = officialBrand;
+        else if (document.title.endsWith(" — " + brand)) {
+          document.title = document.title.slice(0, document.title.length - brand.length) + officialBrand;
+        }
+      }
     });
 
     mounted = {

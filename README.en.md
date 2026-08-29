@@ -151,6 +151,7 @@ export function createMySkin({ jsx }) {
     Name,
     favicon: "data:image/svg+xml,...",
     faviconMime: "image/svg+xml",
+    title: "My Skin",
     css: `body[data-dsh-my-skin] { /* DSH tokens */ }`,
     art: "",
     scrimLight: "",
@@ -169,6 +170,8 @@ Then:
 3. keep the id `official` and the compatibility alias `default` reserved — never for extension skins.
 
 `label` and `description` accept either a locale-neutral string (brand names) or a `{ zh, en }` map, resolved as active locale → en → zh. Skin cards and `__DSH_SKINS__.list()` always report resolved strings, and `tests/dicts.test.mjs` keeps the zh/en dictionaries key- and placeholder-complete in both directions.
+
+`title` (optional) rebrands the browser tab's product segment — the same string or `{ zh, en }` shapes as `label`. The official `DocumentTitle` projector keeps the tab at `<session> — DeepSeek Harness`; while a skin is mounted only the product segment is swapped (the session name stays), and the official brand returns when the official appearance is selected or the plugin unmounts.
 
 Each skin directory owns its mark, favicon, CSS, backdrop and slogans, and must not import visual assets from other skin directories; `runtime.js` and `sidebar-switcher.js` carry the shared mechanics only.
 
@@ -210,6 +213,7 @@ In the browser on the DSH host machine (loopback), the preference is persisted b
 ## Known limits
 
 - The OpenBMC user-bubble outline relies on the version-specific class `.gdEzaW_bubble`; if that class changes, only the outline is affected — the token palette keeps working.
+- The tab-title rebrand depends on the official `DocumentTitle` projector's fixed copy `DeepSeek Harness` and its ` — ` separator; if that projector changes, only the tab product segment is affected — the rest of the interface keeps working.
 - Brand slogans are swapped through the current DSH locale dictionary interface and restored on unmount; re-review after DSH locale upgrades.
 - Other skin plugins may also touch the body backdrop, brand slots or favicon; avoid enabling multiple visual skin plugins at the same time.
 - `uefi-harness` is an architecture-and-interaction placeholder, not the final UEFI brand design.

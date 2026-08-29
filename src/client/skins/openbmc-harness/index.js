@@ -1692,6 +1692,7 @@ export function createOpenBmcHarness(jsxRuntime) {
     Name: OpenBmcName,
     favicon: FAVICON_DATA_URL,
     faviconMime: FAVICON_MIME,
+    title: "OpenBMC Harness",
     css: CSS,
     art: BACKGROUND_ART,
     scrimLight: SCRIM_LIGHT,

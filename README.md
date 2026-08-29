@@ -151,6 +151,7 @@ export function createMySkin({ jsx }) {
     Name,
     favicon: "data:image/svg+xml,...",
     faviconMime: "image/svg+xml",
+    title: "My Skin",
     css: `body[data-dsh-my-skin] { /* DSH tokens */ }`,
     art: "",
     scrimLight: "",
@@ -169,6 +170,8 @@ export function createMySkin({ jsx }) {
 3. 保留 ID `official` 与兼容别名 `default`，不要用于扩展皮肤。
 
 `label` 与 `description` 接受语言中立的字符串（如品牌名）或 `{ zh, en }` 映射，解析顺序为当前语言 → en → zh。皮肤卡片与 `__DSH_SKINS__.list()` 始终返回解析后的字符串，中英词典由 `tests/dicts.test.mjs` 强制键与占位符双向对齐。
+
+`title`（可选）改写浏览器标签页的品牌段，接受与 `label` 相同的字符串或 `{ zh, en }` 形式。官方 `DocumentTitle` 投影器会把标签页维护为「会话名 — DeepSeek Harness」，皮肤挂载期间只替换其中的品牌段、保留会话名；选择官方外观或插件卸载时换回官方品牌。
 
 每个皮肤目录自持品牌标识、favicon、CSS、背景与标语，不从其他皮肤目录导入视觉资源；`runtime.js` 与 `sidebar-switcher.js` 只承载通用机制。
 
@@ -210,6 +213,7 @@ dsh plugin --profile web add link:<本仓库路径>
 ## 已知边界
 
 - OpenBMC 用户气泡描边使用版本相关类 `.gdEzaW_bubble`；该类变化只影响描边，token 配色不受影响。
+- 标签页品牌段替换依赖官方 `DocumentTitle` 投影器的固定文案「DeepSeek Harness」与「 — 」分隔符；投影器实现变化时只影响标签页品牌段，其余界面不受影响。
 - 品牌标语经当前 DSH locale 字典接口替换，皮肤卸载时恢复；升级 DSH locale 实现后需要复核。
 - 其他皮肤插件也可能修改 body 背景、品牌位或 favicon；应避免同时启用多个视觉皮肤插件。
 - `uefi-harness` 是架构与交互占位皮肤，不代表正式 UEFI 品牌设计。

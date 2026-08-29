@@ -22,13 +22,14 @@ const head = { ...makeEl("head"), querySelector() { return null; }, querySelecto
 const body = { ...makeEl("body"), dataset: {}, style: makeEl("b").style };
 
 global.document = {
+	title: "DeepSeek Harness",
 	body, head,
 	createElement: (t) => makeEl(t),
 	querySelector: () => null,
 };
 
 class MutationObserver {
-	constructor(cb) { this.cb = cb; }
+	constructor(cb) { this.cb = cb; (global.__mutationObservers ??= []).push(this); }
 	observe() {}
 	disconnect() { this.disconnected = true; }
 }
@@ -165,6 +166,16 @@ const bgFull = body.style.props["background-image"] || "";
 if (!bgFull.includes("url(")) throw new Error("openbmc backdrop should contain the wallpaper url");
 console.log("✓ background-image set:", bgFull.slice(0, 60) + "...");
 console.log("✓ favicon link appended:", head.children.some((c) => c.rel === "icon" && !c.removed));
+if (document.title !== "OpenBMC Harness") throw new Error("openbmc mount must rebrand the bare tab title, got " + document.title);
+console.log("✓ tab title:", document.title);
+
+// the official DocumentTitle projector rewrites the tab asynchronously —
+// simulate its "<session> — DeepSeek Harness" projection and let the skin's
+// title observer convert the brand segment while keeping the session segment.
+document.title = "标题实验 — DeepSeek Harness";
+for (const o of global.__mutationObservers) if (typeof o.cb === "function") o.cb();
+if (document.title !== "标题实验 — OpenBMC Harness") throw new Error("renderer projection must keep the session segment and rebrand the product segment, got " + document.title);
+console.log("✓ session-aware tab title:", document.title);
 
 // ---- sidebar switcher: registration + dictionary + component render ----
 if (!injectedSlotKeys.includes("sidebar.footer.action")) throw new Error("sidebar switcher slot not injected");
@@ -315,8 +326,9 @@ if (!tagOpenbmc.removed) throw new Error("custom skin style must be removed for 
 if (body.dataset.dshOpenbmcSkin !== undefined) throw new Error("official appearance must remove the OpenBMC body scope");
 if ((body.style.props["background-image"] ?? "") !== "") throw new Error("official appearance must restore the original background");
 if (!openbmcFavicon?.removed) throw new Error("official appearance must remove the custom favicon");
+if (document.title !== "标题实验 — DeepSeek Harness") throw new Error("official appearance must restore the official brand segment, got " + document.title);
 if (themeSnapshot.preference !== "system") throw new Error("skin selection must not change the official theme preference");
-console.log("✓ DeepSeek Harness official appearance restored branding, background and favicon; selection persisted");
+console.log("✓ DeepSeek Harness official appearance restored branding, background, favicon and tab title; selection persisted");
 
 mod.selectSkin("uefi-harness");
 const tagUefi = styleTag("uefi-harness");
@@ -328,6 +340,7 @@ if (body.dataset.dshOpenbmcSkin !== undefined || body.dataset.dshUefiHarness !==
 const skinSlotsAfterSwitch = slotRegistrations.filter((r) => r.opts.priority !== undefined);
 if (skinSlotsAfterSwitch.length !== 6) throw new Error("brand slots should re-register after switch (3+3), got " + skinSlotsAfterSwitch.length);
 console.log("✓ switched to independent UEFI Harness via public selector; backdrop = gradients");
+if (document.title !== "标题实验 — UEFI Harness") throw new Error("uefi mount must rebrand the session-aware tab title, got " + document.title);
 console.log("✓ UEFI body scope attr after switch:", body.dataset.dshUefiHarness === "");
 
 // unknown id must throw
@@ -343,5 +356,6 @@ for (const e of effects) if (typeof e.d === "function") e.d();
 if (body.dataset.dshUefiHarness !== undefined) throw new Error("dispose must remove the UEFI scope attr");
 if (!tagUefi.removed) throw new Error("dispose must remove the skin style tag");
 if (!uiTag.removed) throw new Error("dispose must remove the sidebar UI style tag");
-console.log("✓ dispose ran; scope attr + skin/sidebar UI style tags removed");
+if (document.title !== "标题实验 — DeepSeek Harness") throw new Error("dispose must restore the official brand segment, got " + document.title);
+console.log("✓ dispose ran; scope attr + skin/sidebar UI style tags removed; tab title restored");
 console.log("\nALL SMOKE CHECKS PASSED");

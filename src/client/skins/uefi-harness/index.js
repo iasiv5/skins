@@ -120,6 +120,7 @@ body[data-dsh-uefi-harness] [data-streaming] {
     Name: UefiName,
     favicon,
     faviconMime: "image/svg+xml",
+    title: "UEFI Harness",
     css,
     art: "",
     scrimLight: "",
