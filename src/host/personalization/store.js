@@ -377,18 +377,22 @@ export function createPersonalizationStore(options = {}) {
 
   function snapshot() {
     init();
+    // Future-version states may carry a changed skeleton (that is what a
+    // configVersion bump licenses) — read-only reporting must survive it.
+    const library = state.library ?? {};
+    const skins = state.skins ?? {};
     const base = {
       configVersion: state.configVersion,
       revision: state.revision,
-      skins: state.skins,
-      library: Object.values(state.library),
+      skins,
+      library: Object.values(library),
       mode,
       quota: {
-        count: Object.keys(state.library).length,
-        totalBytes: Object.values(state.library).reduce((sum, meta) => sum + meta.byteLength, 0),
+        count: Object.keys(library).length,
+        totalBytes: Object.values(library).reduce((sum, meta) => sum + (meta?.byteLength ?? 0), 0),
       },
     };
-    if (mode === "normal") base.references = referencesFor(state.skins, state.library);
+    if (mode === "normal") base.references = referencesFor(skins, library);
     if (mode === "recovery") base.recovery = recovery;
     return base;
   }
@@ -580,7 +584,7 @@ export function createPersonalizationStore(options = {}) {
     const name = match[1];
     if (!/^u_[0-9a-f]{32}\.(png|jpe?g|webp|gif)$/.test(name)) return null;
     const id = name.split(".")[0];
-    const meta = state.library[id];
+    const meta = (state.library ?? {})[id];
     if (meta === undefined) return null;
     // The requested extension must equal the trusted metadata's extension;
     // the served path is rebuilt from metadata, never from the raw suffix.

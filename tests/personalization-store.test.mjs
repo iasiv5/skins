@@ -580,3 +580,20 @@ test("N2: a future-version state with a CHANGED shape boots unsupported with zer
   assert.equal(existsSync(join(dir, "staging")), false);
   assert.equal(existsSync(join(dir, "quarantine")), false);
 });
+
+test("N3: shape-changed future states serve a usable read-only snapshot", () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, "state.json"), JSON.stringify({
+    configVersion: 99, revision: 3, skinsFuture: {}, libraryV2: {},
+  }));
+  const store = makeStore(dir);
+  assert.equal(store.getMode(), "unsupported");
+  const snapshot = store.snapshot();
+  assert.equal(snapshot.mode, "unsupported");
+  assert.equal(snapshot.configVersion, 99);
+  assert.equal(snapshot.revision, 3);
+  assert.deepEqual(snapshot.library, []);
+  assert.deepEqual(snapshot.quota, { count: 0, totalBytes: 0 });
+  // The read-only asset route degrades to 404 semantics, never a TypeError.
+  assert.equal(store.serveAsset("/dsh-skins/assets/u_0123456789abcdef0123456789abcdef.png"), null);
+});

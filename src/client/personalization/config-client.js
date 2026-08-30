@@ -93,7 +93,8 @@ export function createConfigClient(options = {}) {
       const response = await request("/config");
       if (disposed || generation !== fetchGeneration) return publicState();
       if (contextAtStart !== undefined && options.contextActive?.() !== contextAtStart) {
-        return publicState(); // the world moved on — drop the stale snapshot
+        void refetch(); // the world moved on — drop the stale snapshot and pull for the new one
+        return publicState();
       }
       if (response.status === 404 || response.status === 501) {
         // Host older than the client (no personalization routes yet).
@@ -107,6 +108,7 @@ export function createConfigClient(options = {}) {
       const body = await response.json();
       if (disposed || generation !== fetchGeneration) return publicState();
       if (contextAtStart !== undefined && options.contextActive?.() !== contextAtStart) {
+        void refetch(); // pull a snapshot for the context that replaced this one
         return publicState();
       }
       if (body?.mode === "unsupported") {
