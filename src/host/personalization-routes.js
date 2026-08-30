@@ -17,22 +17,16 @@ const CODE_STATUS = {
   INVALID_CONFIG: 400,
   INVALID_ASSET_ID: 400,
   FILENAME_INVALID: 400,
-  IMPORT_INVALID: 400,
   ASSET_NOT_FOUND: 404,
   UNKNOWN_SKIN: 404,
   UNSUPPORTED_IMAGE: 415,
   ANIMATION_UNSUPPORTED: 415,
   UPLOAD_TOO_LARGE: 413,
-  IMPORT_TOO_LARGE: 413,
-  IMPORT_EXPIRED: 410,
   DISK_FULL: 507,
   STORE_READONLY: 409,
   STORE_RECOVERY_REQUIRED: 409,
   STORE_NOT_RECOVERING: 409,
-  IMPORT_CONFLICT: 409,
 };
-
-const THEME_ARCHIVE_LIMIT = 80 * 1024 * 1024;
 
 function sendJson(response, status, value, extraHeaders = {}) {
   response.writeHead(status, {
@@ -233,61 +227,6 @@ export function mountPersonalizationRoutes(host, options) {
     },
   });
   disposers.push(assetsRoute);
-
-  // --- theme packages: import (two-phase) and export -------------------------
-
-  const themeImportRoute = host.webServer.register({
-    kind: "exact",
-    path: "/dsh-skins/theme/import",
-    handler: async (request, response) => {
-      if (!fence(request, response)) return;
-      if (!method(request, response, "POST")) return;
-      const query = new URL(request.url ?? "/", "http://localhost");
-      const action = query.searchParams.get("action") ?? "prepare";
-      try {
-        if (action === "prepare") {
-          const declared = Number(header(request.headers, "content-length") ?? "0");
-          if (declared > THEME_ARCHIVE_LIMIT) throw codedError("IMPORT_TOO_LARGE", "主题包超过 80MB 上限");
-          const buffer = await readRawBody(request, THEME_ARCHIVE_LIMIT + 1024, "IMPORT_TOO_LARGE");
-          return sendJson(response, 200, await store.prepareImport(buffer));
-        }
-        if (action === "commit") {
-          const body = await readJsonBody(request);
-          return sendJson(response, 200, await store.commitImport(body));
-        }
-        throw codedError("INVALID_CONFIG", "action 必须是 prepare 或 commit");
-      } catch (error) {
-        return sendError(response, error);
-      }
-    },
-  });
-  disposers.push(themeImportRoute);
-
-  const themeExportRoute = host.webServer.register({
-    kind: "prefix",
-    path: "/dsh-skins/theme/export",
-    handler: async (request, response) => {
-      if (!fence(request, response)) return;
-      if (!method(request, response, "GET")) return;
-      const path = String(request.url ?? "").split("?")[0];
-      const match = /\/dsh-skins\/theme\/export\/([a-z0-9-]+)$/.exec(path);
-      if (match === null) return sendJson(response, 400, { error: "skin id required", code: "UNKNOWN_SKIN" });
-      try {
-        const pkg = store.exportTheme(match[1]);
-        response.writeHead(200, {
-          "content-type": "application/zip",
-          "content-length": pkg.zip.length,
-          "content-disposition": `attachment; filename="${pkg.filename}"`,
-          "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-        });
-        return response.end(pkg.zip);
-      } catch (error) {
-        return sendError(response, error);
-      }
-    },
-  });
-  disposers.push(themeExportRoute);
 
   } catch (error) {
     for (let index = disposers.length - 1; index >= 0; index -= 1) {

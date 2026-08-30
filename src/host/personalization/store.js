@@ -6,7 +6,6 @@
  * On-disk layout:
  *   state.json              the ONE mutable state file (atomic temp+rename)
  *   assets/u_<id>.<ext>     immutable content-addressed-by-id blobs
- *   staging/<uuid>/         in-flight writes (cleaned on error, GC'd after 24h)
  *   quarantine/             unrecognized files moved ONLY after recovery is
  *                           confirmed by the user (branch A, design §5.3)
  *
@@ -16,7 +15,7 @@
  *               GC, candidate library rebuilt from blobs by sniffing, config
  *               overrides reported as lost; user confirm restores normal
  *   unsupported state configVersion > CONFIG_VERSION → strict zero writes:
- *               no rebuild, no moves, no staging cleanup, no GC (design §5.3 B)
+ *               no rebuild, no moves, no GC (design §5.3 B)
  *
  * Durability contract (design §5.2): rename-based atomicity covers process
  * crashes and exception paths. Power loss may lose the state file — recovery
@@ -43,7 +42,6 @@ import { join } from "node:path";
 import { codedError } from "../errors.js";
 import { atomicWriteText } from "../atomic-write.js";
 import { detectImageMeta, extensionForMime } from "./image-meta.js";
-import { readStoreOnlyZip, writeStoreOnlyZip } from "./zip.js";
 import {
   ASSET_ID_PATTERN,
   ASSET_ID_PREFIX,
@@ -61,12 +59,9 @@ import {
 
 const STATE_FILE = "state.json";
 const ASSETS_DIR = "assets";
-const STAGING_DIR = "staging";
 const QUARANTINE_DIR = "quarantine";
-const STAGING_TTL_MS = 24 * 60 * 60 * 1000;
 const DISK_SAFETY_RESERVE = 64 * 1024 * 1024;
 const CORRUPT_BACKUP_LIMIT = 3;
-const IMPORT_TTL_MS = 10 * 60 * 1000;
 const ID_ATTEMPTS = 5;
 
 function defaultFs() {
@@ -165,13 +160,11 @@ export function createPersonalizationStore(options = {}) {
 
   const stateFile = join(dataDir, STATE_FILE);
   const assetsDir = join(dataDir, ASSETS_DIR);
-  const stagingDir = join(dataDir, STAGING_DIR);
   const quarantineDir = join(dataDir, QUARANTINE_DIR);
 
   let state = null;
   let mode = "normal"; // normal | recovery | unsupported
   let recovery = null; // { candidateLibrary, quarantine:[names], configLost }
-  const imports = new Map(); // importToken → { status, manifest, assets, diff, expiresAt, result }
   let chain = Promise.resolve();
   let initialized = false;
 
@@ -179,7 +172,6 @@ export function createPersonalizationStore(options = {}) {
 
   function ensureDirs() {
     fs.mkdirSync(assetsDir, { recursive: true });
-    fs.mkdirSync(stagingDir, { recursive: true });
   }
 
   function readStateFile() {
@@ -280,7 +272,7 @@ export function createPersonalizationStore(options = {}) {
     if (read.kind === "future" || (read.kind === "ok" && read.state.configVersion > CONFIG_VERSION)) {
       mode = "unsupported";
       state = read.state;
-      return; // no ensureDirs, no validation, no GC, no staging cleanup
+      return; // no ensureDirs, no validation, no GC
     }
     ensureDirs();
     const assetFiles = listAssetFiles();
@@ -327,20 +319,6 @@ export function createPersonalizationStore(options = {}) {
       if (!live.has(id)) {
         try { fs.unlinkSync(join(assetsDir, name)); } catch {}
       }
-    }
-    cleanupStaging();
-  }
-
-  function cleanupStaging() {
-    if (!fs.existsSync(stagingDir)) return;
-    for (const entry of fs.readdirSync(stagingDir)) {
-      const dir = join(stagingDir, entry);
-      try {
-        // Fresh staging dirs belong to in-flight writes; expire only old ones.
-        if (now() - fs.statSync(dir).mtimeMs < STAGING_TTL_MS) continue;
-        for (const file of fs.readdirSync(dir)) fs.unlinkSync(join(dir, file));
-        fs.rmdirSync(dir);
-      } catch {}
     }
   }
 
@@ -596,280 +574,6 @@ export function createPersonalizationStore(options = {}) {
     }
   }
 
-  // -- theme packages: export / prepare / commit (design §6) ----------------
-
-  function exportTheme(skinId) {
-    init();
-    requireNormal("主题导出");
-    const schema = getSkinSchema(skinId);
-    if (schema === null) throw codedError("UNKNOWN_SKIN", `皮肤 ${skinId} 不在个性化目录中`);
-    const section = state.skins[skinId] ?? {};
-    const fields = {};
-    const entries = [{ name: "manifest.json", data: null }];
-    const listed = [];
-    const seenFiles = new Set(); // one asset may back several fields (Y3)
-    for (const field of schema.fields) {
-      const value = section[field.key];
-      if (value === undefined) continue;
-      if (field.type === "image") {
-        const ref = resolveImageRef(value);
-        if (ref === null) continue;
-        if (ref.kind === "builtin") {
-          fields[field.key] = value; // builtin refs travel as-is
-          continue;
-        }
-        const meta = state.library[ref.id];
-        if (meta === undefined) continue; // dangling reference: skip on export
-        const file = `assets/${meta.id}.${meta.extension}`;
-        fields[field.key] = { $asset: file };
-        if (seenFiles.has(file)) continue; // dedupe ZIP entries and listings
-        seenFiles.add(file);
-        const data = fs.readFileSync(blobFileFor(meta.id, meta.extension));
-        entries.push({ name: file, data });
-        listed.push({ file, sha256: sha256Hex(data) });
-      } else {
-        fields[field.key] = value;
-      }
-    }
-    const manifest = {
-      formatVersion: 1,
-      skinId,
-      exportedAt: new Date(now()).toISOString(),
-      fields,
-      assets: listed,
-    };
-    entries[0].data = Buffer.from(JSON.stringify(manifest), "utf8");
-    return {
-      zip: writeStoreOnlyZip(entries),
-      filename: `dsh-skins-theme-${skinId}.zip`,
-    };
-  }
-
-  function pruneExpiredImports() {
-    // Committed results are kept only until their TTL for retry idempotency;
-    // after that the (slim) entry goes too — no unbounded retention.
-    for (const [token, entry] of imports) {
-      if (entry.expiresAt < now()) imports.delete(token);
-    }
-  }
-
-  async function prepareImport(buffer) {
-    init();
-    requireNormal("主题导入");
-    pruneExpiredImports();
-    const { manifest: manifestBuffer, assets } = readStoreOnlyZip(buffer);
-    let manifest;
-    try {
-      manifest = JSON.parse(manifestBuffer.toString("utf8"));
-    } catch {
-      throw codedError("IMPORT_INVALID", "manifest.json 不是合法 JSON");
-    }
-    if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)
-      || manifest.formatVersion !== 1 || typeof manifest.skinId !== "string"
-      || typeof manifest.fields !== "object" || manifest.fields === null
-      || Array.isArray(manifest.fields) || !Array.isArray(manifest.assets)) {
-      throw codedError("IMPORT_INVALID", "manifest 结构不合法");
-    }
-    const schema = getSkinSchema(manifest.skinId);
-    if (schema === null) throw codedError("IMPORT_INVALID", `皮肤 ${manifest.skinId} 不在个性化目录中`);
-
-    // Every listed asset must be present with a matching hash; no orphans.
-    const listedFiles = new Set();
-    for (const asset of manifest.assets) {
-      if (typeof asset?.file !== "string" || typeof asset.sha256 !== "string") {
-        throw codedError("IMPORT_INVALID", "manifest.assets 结构不合法");
-      }
-      const data = assets.get(asset.file);
-      if (data === undefined) throw codedError("IMPORT_INVALID", `包内缺少 ${asset.file}`);
-      if (sha256Hex(data) !== asset.sha256) throw codedError("IMPORT_INVALID", `${asset.file} 哈希不匹配`);
-      listedFiles.add(asset.file);
-    }
-    for (const name of assets.keys()) {
-      if (!listedFiles.has(name)) throw codedError("IMPORT_INVALID", `${name} 未在 manifest 中登记`);
-    }
-
-    // Prepare-time ingest validation (design §6: prepare AND commit both
-    // re-validate): sniff every asset through the shared uploader rules so
-    // illegal packages fail at preview instead of after the user confirms.
-    const preparedMeta = new Map(); // file → sniffed {mime, width, height, byteLength}
-    for (const file of listedFiles) {
-      const sniffed = ingestAssetMeta(assets.get(file));
-      preparedMeta.set(file, {
-        mime: sniffed.mime,
-        width: sniffed.width,
-        height: sniffed.height,
-        byteLength: assets.get(file).length,
-      });
-    }
-
-    // Field values: markers must point at listed assets AND satisfy the
-    // field-level constraints at prepare time; plain image strings must be
-    // builtin refs; other values validate without library metadata.
-    const mappedFields = {};
-    for (const [key, value] of Object.entries(manifest.fields)) {
-      const field = getField(manifest.skinId, key);
-      if (field === null) continue; // future-version fields are ignored on import
-      if (field.type === "image" && value !== null && typeof value === "object" && !Array.isArray(value)) {
-        const file = value.$asset;
-        if (typeof file !== "string" || !listedFiles.has(file)) {
-          throw codedError("IMPORT_INVALID", `${key} 引用了未登记的资产`);
-        }
-        if (!metaSatisfiesField(field, preparedMeta.get(file))) {
-          throw codedError("IMPORT_INVALID", `${key} 的图片不满足该字段约束（格式/大小/尺寸）`);
-        }
-        mappedFields[key] = { $asset: file };
-        continue;
-      }
-      if (field.type === "image" && typeof value === "string" && !value.startsWith("builtin:")) {
-        throw codedError("IMPORT_INVALID", `${key} 的用户图片必须以 $asset 标记导出`);
-      }
-      const verdict = validateOverride(manifest.skinId, key, value, undefined);
-      if (!verdict.ok) throw codedError("IMPORT_INVALID", `${key} 校验失败（${verdict.code}）`);
-      mappedFields[key] = value;
-    }
-
-    // Diff against the current overrides (design: preview three groups).
-    const current = state.skins[manifest.skinId] ?? {};
-    const knownKeys = new Set(schema.fields.map((field) => field.key));
-    const setFields = Object.keys(mappedFields);
-    const removeFields = [...knownKeys].filter((key) => current[key] !== undefined && !(key in mappedFields));
-    const keepUnknown = Object.keys(current).filter((key) => !knownKeys.has(key));
-    const warnings = [];
-    if (keepUnknown.length > 0) warnings.push({ code: "KEEP_UNKNOWN_FIELDS", keys: keepUnknown });
-
-    const importToken = randomUUID();
-    imports.set(importToken, {
-      status: "prepared",
-      manifest,
-      assets,
-      mappedFields,
-      expiresAt: now() + IMPORT_TTL_MS,
-    });
-    return {
-      importToken,
-      baseRevision: state.revision,
-      diff: { setFields, removeFields, keepUnknown },
-      warnings,
-      expiresAt: new Date(now() + IMPORT_TTL_MS).toISOString(),
-    };
-  }
-
-  async function commitImport({ importToken, baseRevision, confirm, purgeUnknown }) {
-    init();
-    requireNormal("主题导入");
-    // Token state, params and revision are ALL validated inside the
-    // serialized queue: concurrent commits of the same token collapse to a
-    // single state change, and a moved revision 409s for the loser.
-    return enqueue(() => {
-      const entry = imports.get(importToken);
-      if (entry === undefined || entry.expiresAt < now()) {
-        imports.delete(importToken);
-        throw codedError("IMPORT_EXPIRED", "导入会话不存在或已过期");
-      }
-      if (entry.status === "committed") {
-        // Network-retry idempotency: same token + same params → same result.
-        if (entry.resultParams === JSON.stringify({ baseRevision, confirm, purgeUnknown })) {
-          return entry.result;
-        }
-        throw codedError("IMPORT_CONFLICT", "导入已提交，参数不一致");
-      }
-      if (confirm !== true) throw codedError("INVALID_CONFIG", "commit 需要 confirm:true");
-      if (typeof baseRevision !== "number" || baseRevision !== state.revision) {
-        throw codedError("IMPORT_CONFLICT", "配置已变化，请重新预览");
-      }
-
-      const skinId = entry.manifest.skinId;
-      const schema = getSkinSchema(skinId);
-      const newBlobs = [];
-      const mapping = {};
-      let committed = false;
-      try {
-        const draft = structuredClone(state);
-        // Re-id assets through the shared ingest validation; hash dedup
-        // reuses an identical library entry instead of duplicating the blob.
-        for (const [file, buffer] of entry.assets) {
-          const meta = ingestAssetMeta(buffer);
-          const hash = sha256Hex(buffer);
-          const existing = Object.values(draft.library).find((asset) => asset.sha256 === hash);
-          if (existing !== undefined) {
-            mapping[file] = existing.id;
-            continue;
-          }
-          checkDiskSpace(buffer.length);
-          const extension = extensionForMime(meta.mime);
-          const { id, target } = writeBlobExclusive(buffer, extension);
-          newBlobs.push(target);
-          draft.library[id] = {
-            id,
-            displayName: file.split("/").pop(),
-            mime: meta.mime,
-            extension,
-            byteLength: buffer.length,
-            width: meta.width,
-            height: meta.height,
-            sha256: hash,
-            createdAt: new Date(now()).toISOString(),
-          };
-          mapping[file] = id;
-        }
-
-        // Build the replacement section: known fields from the manifest,
-        // unknown fields preserved unless purgeUnknown.
-        const provider = (id) => draft.library[id] ?? null;
-        const current = state.skins[skinId] ?? {};
-        const knownKeys = new Set(schema.fields.map((field) => field.key));
-        const section = {};
-        if (!purgeUnknown) {
-          for (const [key, value] of Object.entries(current)) {
-            if (!knownKeys.has(key)) section[key] = value;
-          }
-        }
-        for (const [key, value] of Object.entries(entry.mappedFields)) {
-          const finalValue = value !== null && typeof value === "object" && typeof value.$asset === "string"
-            ? mapping[value.$asset]
-            : value;
-          if (finalValue === undefined) continue;
-          const verdict = validateOverride(skinId, key, finalValue, provider);
-          if (!verdict.ok) {
-            throw codedError("IMPORT_INVALID", `${key} 导入校验失败（${verdict.code}）`);
-          }
-          section[key] = finalValue;
-        }
-        draft.skins[skinId] = section;
-        draft.revision += 1;
-        commitState(draft);
-        committed = true;
-
-        const result = { revision: draft.revision, skinConfig: section, assetMapping: mapping };
-        entry.status = "committed";
-        entry.result = result;
-        entry.resultParams = JSON.stringify({ baseRevision, confirm, purgeUnknown });
-        // Slim the token: archive buffers are no longer needed and must not
-        // stay resident for the token's remaining TTL.
-        entry.manifest = null;
-        entry.assets = null;
-        entry.mappedFields = null;
-        return result;
-      } catch (error) {
-        // Only reclaim blobs that the committed state does NOT reference.
-        if (!committed) {
-          for (const blob of newBlobs) {
-            try { fs.unlinkSync(blob); } catch {}
-          }
-        }
-        throw error;
-      } finally {
-        // Post-commit GC is best-effort housekeeping: a GC failure must never
-        // delete blobs the freshly committed state references.
-        if (committed) {
-          try { gcNow(); } catch {}
-        }
-      }
-    });
-  }
-
-
-
   // -- recovery confirmation (branch A: destructive steps only after commit) -
 
   async function confirmRecovery() {
@@ -939,9 +643,6 @@ export function createPersonalizationStore(options = {}) {
     uploadAsset,
     deleteAsset,
     serveAsset,
-    exportTheme,
-    prepareImport,
-    commitImport,
     confirmRecovery,
     getMode: () => {
       init();
