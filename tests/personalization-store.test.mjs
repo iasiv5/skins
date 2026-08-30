@@ -169,23 +169,73 @@ test("unknown fields and unknown skins are rejected", async () => {
   );
 });
 
-test("unknown fields and orphan skin sections survive later commits", async () => {
+test("load normalization drops unknown keys, stale shapes, dangling refs and orphan sections", async () => {
   const dir = tempDir();
   const store = makeStore(dir);
-  await setOverride(store, "tgcf", "panelOpacity", 55);
-  // Simulate a future-version field and a removed-skin section on disk.
+  const { asset } = await store.uploadAsset(pngBytes(), { displayName: "w" });
+  await setOverride(store, "tgcf", "slogan", { zh: "存", en: "Keep" });
+  await setOverride(store, "openbmc", "wallpaper", asset.id);
   const statePath = join(dir, "state.json");
   const raw = JSON.parse(readFileSync(statePath, "utf8"));
-  raw.skins.tgcf.futureField = { any: "shape" };
-  raw.skins.removedSkin = { wallpaper: "u_0123456789abcdef0123456789abcdef" };
+  const baseRevision = raw.revision;
+  // Pre-simplization leftovers planted straight onto the disk state.
+  raw.skins.tgcf.futureField = { any: "shape" }; // unknown key
+  raw.skins.tgcf.accent = { light: "#111111", dark: "#222222" }; // removed field
+  raw.skins.tgcf.scrim = { light: 18, dark: 42 }; // stale light/dark pair shape
+  raw.skins.tgcf.wallpaper = "u_0123456789abcdef0123456789abcdef"; // dangling user ref
+  raw.skins.removedSkin = { wallpaper: "builtin:tgcf:lanterns" }; // orphan section
   writeFileSync(statePath, JSON.stringify(raw));
-  // Re-open the store from disk.
+
   const reopened = makeStore(dir);
-  await setOverride(reopened, "tgcf", "blur", 8);
   const snapshot = reopened.snapshot();
-  assert.deepEqual(snapshot.skins.tgcf.futureField, { any: "shape" });
-  assert.equal(snapshot.skins.removedSkin.wallpaper, "u_0123456789abcdef0123456789abcdef");
-  assert.equal(snapshot.skins.tgcf.blur, 8);
+  const section = snapshot.skins.tgcf;
+  assert.equal(section.futureField, undefined, "unknown key dropped");
+  assert.equal(section.accent, undefined, "removed field dropped");
+  assert.equal(section.scrim, undefined, "stale shape dropped (single-value scrim replaces it)");
+  assert.equal(section.wallpaper, undefined, "dangling user ref dropped");
+  assert.deepEqual(section.slogan, { zh: "存", en: "Keep" }, "valid keys survive");
+  assert.equal(snapshot.skins.removedSkin, undefined, "orphan section removed");
+  assert.equal(snapshot.skins.openbmc.wallpaper, asset.id, "live user ref survives");
+  assert.equal(snapshot.revision, baseRevision + 1, "exactly one normalization commit");
+  const onDisk = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.equal(onDisk.skins.tgcf.slogan.zh, "存", "normalization is persisted");
+  assert.equal(onDisk.skins.removedSkin, undefined);
+});
+
+test("load normalization commits nothing when the state is already clean", async () => {
+  const dir = tempDir();
+  const store = makeStore(dir);
+  await setOverride(store, "tgcf", "slogan", { zh: "净", en: "Clean" });
+  const statePath = join(dir, "state.json");
+  const before = readFileSync(statePath, "utf8");
+  const revision = store.snapshot().revision;
+
+  const reopened = makeStore(dir);
+  assert.equal(reopened.snapshot().revision, revision, "no revision bump");
+  assert.equal(readFileSync(statePath, "utf8"), before, "state file byte-identical");
+});
+
+test("load normalization never writes in recovery or unsupported modes", async () => {
+  // Corrupt state → recovery branch: zero writes (bytes identical).
+  const dirA = tempDir();
+  const seed = makeStore(dirA);
+  await seed.uploadAsset(pngBytes(), { displayName: "w" });
+  writeFileSync(join(dirA, "state.json"), "{ broken");
+  const before = readFileSync(join(dirA, "state.json"), "utf8");
+  makeStore(dirA).snapshot();
+  assert.equal(readFileSync(join(dirA, "state.json"), "utf8"), before, "recovery writes nothing");
+
+  // Future configVersion → unsupported branch: zero writes.
+  const dirB = tempDir();
+  writeFileSync(join(dirB, "state.json"), JSON.stringify({
+    configVersion: 99, revision: 3,
+    skins: { tgcf: { accent: { light: "#1", dark: "#2" }, anythingElse: 1 } },
+    library: {},
+  }));
+  const beforeB = readFileSync(join(dirB, "state.json"), "utf8");
+  const future = makeStore(dirB);
+  assert.equal(future.getMode(), "unsupported");
+  assert.equal(readFileSync(join(dirB, "state.json"), "utf8"), beforeB, "unsupported writes nothing");
 });
 
 test("image overrides validate against the live library (missing assets reject)", async () => {

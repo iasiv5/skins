@@ -310,8 +310,8 @@ export function validateOverride(skinId, key, value, metaProvider) {
 /**
  * Pure merge (design §1): catalog defaults + user overrides, with layer-1
  * fallback — an invalid override falls back to the field default and is
- * reported in `issues`; unknown keys are ignored (the store preserves them,
- * projection never sees them).
+ * reported in `issues`; unknown keys are ignored by projection (the store
+ * normalizes them away at load, design §5.5).
  *
  * `metaProvider(refId) → AssetMeta | null` lets image fields validate
  * against trusted library metadata without importing storage.

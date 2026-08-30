@@ -306,7 +306,49 @@ export function createPersonalizationStore(options = {}) {
       // quarantine move — resume it (idempotent), then GC.
       finishRecoveryCleanup();
     }
+    normalizeState();
     gcNow();
+  }
+
+  /**
+   * Load-time normalization (simplification Q36, design §5.5): reconcile the
+   * persisted overrides against the CURRENT catalog. Unknown keys, values the
+   * catalog now rejects (removed fields, shape changes such as the old
+   * light/dark scrim pair, dangling user refs) and whole sections of
+   * unregistered skins are dropped; an actual removal bumps the revision once
+   * and is committed atomically.
+   *
+   * Runs ONLY on the normal path: the recovery branch writes nothing until
+   * the user confirms, and a future-version state is sorted into
+   * `unsupported` by the configVersion gate long before this code runs —
+   * which is exactly why fields a FUTURE version may add can never be
+   * damaged by an older build's normalization.
+   */
+  function normalizeState() {
+    const provider = metaProviderFactory(state.library);
+    let removed = false;
+    for (const skinId of Object.keys(state.skins)) {
+      if (getSkinSchema(skinId) === null) {
+        delete state.skins[skinId]; // orphan section of an unregistered skin
+        removed = true;
+        continue;
+      }
+      const section = state.skins[skinId];
+      for (const key of Object.keys(section)) {
+        if (!validateOverride(skinId, key, section[key], provider).ok) {
+          delete section[key];
+          removed = true;
+        }
+      }
+      if (Object.keys(section).length === 0) {
+        delete state.skins[skinId]; // emptied sections leave no husk behind
+        removed = true;
+      }
+    }
+    if (removed) {
+      state.revision += 1;
+      commitState(state);
+    }
   }
 
   // -- garbage collection ---------------------------------------------------
