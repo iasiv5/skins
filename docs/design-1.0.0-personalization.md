@@ -286,7 +286,7 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 
 ## 17. 不做清单（v2 + 增补）
 
-v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。
+v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）、**主题包请求体流式落盘 + 增量 ZIP 解析（实现评审 Y1，部分采纳）**——本机单用户 + 80MB 硬上限已界定最坏内存；已做 prepare token 瘦身与 committed token TTL 驱逐消除无界驻留；多用户/远端部署场景出现时必须重做为流式。
 
 ## 18. 商标与非关联声明（同 v2）
 
@@ -297,6 +297,8 @@ README 双语非官方声明；发布前用户终审名称（中性备选「千�
 R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+titleBrand 无分隔符+`updateActive` 事务化；R3 四态状态机；R4 恢复安全模式+GC 存活定义；R5 仓内 atomic-write 归属修正+durability 范围；R6 AssetMeta 执行点+builtin 规则+labelKey+tgcf 全表；PATCH 两补充；Y1 ZIP 结构约束；Y2 WebP 三 chunk+动画裁决；Y3 filename 编码；Y4 事实修正+半自动 gate；Y5 测试增补；Y6 导入幂等；Y7 发布时序修正；Y8 private 缓存；Y9 磁盘硬阈值；Y10 motif 删除。
 
 **v2.1 → v2.2（三轮差异复核）**：恢复模式拆两分支（损坏恢复 / 版本过新零写入）+ state 缺失且 assets 非空进恢复；掉电上限措辞改为"配置未必可恢复、blob 保留"；三层回退语义冻结；staticCss 改皮肤预作用域；image schema 增 maxPixels（GIF 12MP）；GIF 风险措辞按评审纠正；merge 措辞统一（catalog 纯函数、projector 执行）。
+
+**v2.3 增补（实现评审第二轮 N1/N2）**：runtime 挂载改回 teardown-first（共享节点身份下 build-then-swap 会拆毁活动皮肤——生产每次加载必触发的发布级回归），失败恢复 = 纯函数重投影旧皮肤；styleTag 复用必刷新内容；readStateFile 在 shape 校验前先做 configVersion 探测（shape 变化的未来版 → unsupported 零写入）；contextActive 接入 runtime.active；齿轮补 DOM id；verify-release 在 CI 锚定 GITHUB_REPOSITORY；Y1 登记入 §17；发版手工清单落为 `docs/release-checklist-1.0.0.md`（含 README 截图、双标签页、升级演练等 tag 前置条件）。
 
 ## 20. 终审记录
 

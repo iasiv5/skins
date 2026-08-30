@@ -255,6 +255,7 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
         card,
         jsx("button", {
           type: "button",
+          id: `${skin.id}-gear`,
           className: "dsh-skins-pz-gear",
           "aria-label": localeTranslate("personalization.title"),
           title: localeTranslate("personalization.title"),

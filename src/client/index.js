@@ -31,7 +31,9 @@ window.__ModuleLoader__.load({
 
     // Personalization plumbing (design §7.1): mount immediately on defaults,
     // then hot-update when the config syncs — never block first paint.
-    const configClient = typeof fetch === "function" ? createConfigClient({}) : null;
+    const configClient = typeof fetch === "function"
+      ? createConfigClient({ contextActive: () => runtime.active() })
+      : null;
     if (configClient !== null) {
       const assetResolver = (ref) => {
         if (ref.kind === "builtin") {
@@ -89,6 +91,7 @@ window.__ModuleLoader__.load({
       active: runtime.active,
       themePreference: readLocalThemePreference,
       personalization: configClient,
+      hotUpdate: runtime.updateActive,
     };
 
     return {

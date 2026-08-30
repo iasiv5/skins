@@ -18,7 +18,7 @@ export function createSkinRuntime() {
   const skins = new Map();
   const order = [];
   let ctx = null;
-  let mounted = null;
+  let mounted = null; // { skin, effects, overrides, stop }
   let selectedId = null;
   let personalization = null; // { getOverrides, assetResolver, metaProvider }
 
@@ -116,9 +116,9 @@ export function createSkinRuntime() {
       tag = document.createElement("style");
       tag.dataset.plugin = "dsh-skins";
       tag.dataset.pluginCss = id;
-      tag.textContent = content;
       document.head.appendChild(tag);
     }
+    tag.textContent = content; // reuse must never serve stale CSS
     return tag;
   }
 
@@ -308,53 +308,86 @@ export function createSkinRuntime() {
     mounted = null;
   }
 
-  /** Swap in a fully built effect set; the old one is disposed only now. */
-  function commitMount(skin, effects, stop) {
-    unmount();
-    mounted = { skin, effects, stop };
+  /**
+   * Teardown-first mount (N1): effects share DOM node identities (style
+   * tags, token layers, dict entries), so the OLD set must be fully
+   * disposed BEFORE the new one is built — otherwise the old disposers tear
+   * down nodes the new set is actively using. A failed build restores the
+   * previous skin by RE-PROJECTING it (the projector is pure and cheap);
+   * when even that fails we fall back to official.
+   */
+  function applyEffects(skin, effects, overrides) {
+    const previous = mounted === null ? null : { skin: mounted.skin, overrides: mounted.overrides };
+    unmount(); // restores officials first: correct title/favicon baseline
+    let stop;
+    try {
+      stop = buildEffects(skin, effects);
+    } catch (error) {
+      console.warn(`[dsh-skins] mounting "${skin.id}" failed`, error);
+      restorePrevious(previous, error);
+      return false;
+    }
+    mounted = { skin, effects, overrides, stop };
     selectedId = skin.id;
     announce(skin.id);
+    return true;
   }
 
-  /**
-   * Project + build + swap. Build failures leave the PREVIOUS skin mounted
-   * (nothing was unmounted yet); returns false = fail-closed (design §3).
-   */
+  function restorePrevious(previous, cause) {
+    if (previous !== null) {
+      try {
+        const restored = projectSkin(previous.skin, previous.overrides, projectionContext());
+        if (restored.effects !== null) {
+          const stop = buildEffects(previous.skin, restored.effects);
+          mounted = { skin: previous.skin, effects: restored.effects, overrides: previous.overrides, stop };
+          selectedId = previous.skin.id;
+          announce(previous.skin.id);
+          return;
+        }
+      } catch (restoreError) {
+        console.error("[dsh-skins] restoring the previous skin failed; falling back to official", restoreError);
+      }
+    }
+    void cause;
+    selectedId = OFFICIAL_SKIN_ID;
+    announce(OFFICIAL_SKIN_ID);
+  }
+
+  /** Project + mount a skin; false = failed (previous restored or official). */
   function mountSkin(skin) {
-    const result = projectSkin(skin, overridesFor(skin.id), projectionContext());
+    const overrides = overridesFor(skin.id);
+    const result = projectSkin(skin, overrides, projectionContext());
     if (result.effects === null) {
-      console.warn(`[dsh-skins] skin "${skin.id}" failed to project; keeping the previous appearance`);
+      console.warn(`[dsh-skins] skin "${skin.id}" failed to project`);
+      if (mounted !== null) return false; // projection failed, current skin untouched
+      selectedId = OFFICIAL_SKIN_ID; // first boot fail-closed
+      announce(OFFICIAL_SKIN_ID);
       return false;
     }
     if (result.degraded !== "none") {
       console.warn(`[dsh-skins] skin "${skin.id}" projected with degraded defaults (${result.degraded})`);
     }
-    const stop = buildEffects(skin, result.effects); // self-unwinding on throw
-    commitMount(skin, result.effects, stop);
-    return true;
+    return applyEffects(skin, result.effects, overrides);
   }
 
   /**
-   * Hot-update the active skin's effects after a config change. The new set
-   * is fully built BEFORE the old one is disposed, so any failure keeps the
-   * current known-good effects running (design §7.1).
+   * Hot-update the active skin's effects after a config change. Projection
+   * failures keep the current effects; mount failures re-project and
+   * restore the previous overrides (design §7.1 / §3).
    */
   function updateActive() {
     if (mounted === null) return { applied: false, reason: "none" };
     const skin = mounted.skin;
-    const result = projectSkin(skin, overridesFor(skin.id), projectionContext());
+    const overrides = overridesFor(skin.id);
+    const result = projectSkin(skin, overrides, projectionContext());
     if (result.effects === null) {
       console.warn("[dsh-skins] config hot-update failed to project; keeping current effects");
       return { applied: false, reason: "projection-failed" };
     }
-    try {
-      const stop = buildEffects(skin, result.effects);
-      commitMount(skin, result.effects, stop);
-      return { applied: true, degraded: result.degraded };
-    } catch (error) {
-      console.warn("[dsh-skins] effects replacement failed; keeping current effects", error);
-      return { applied: false, reason: "mount-failed" };
-    }
+    const applied = applyEffects(skin, result.effects, overrides);
+    return applied
+      ? { applied: true, degraded: result.degraded }
+      : { applied: false, reason: "mount-failed" };
   }
 
   function select(id) {
@@ -373,13 +406,11 @@ export function createSkinRuntime() {
       return normalizedId;
     }
 
-    // Build FIRST: a failing projection or build leaves the current skin
-    // mounted and the selection unchanged (R7).
-    if (!mountSkin(skin)) {
-      console.warn(`[dsh-skins] selection of "${normalizedId}" kept the previous appearance`);
-      return normalizedId;
+    if (mountSkin(skin)) {
+      try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
+    } else {
+      console.warn(`[dsh-skins] selection of "${normalizedId}" did not take effect`);
     }
-    try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
     return normalizedId;
   }
 

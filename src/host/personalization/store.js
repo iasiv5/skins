@@ -190,6 +190,13 @@ export function createPersonalizationStore(options = {}) {
     } catch {
       return { kind: "corrupt" };
     }
+    // Version probe BEFORE any current-shape validation (N2): a future
+    // version may legitimately change the top-level skeleton — that is
+    // "unsupported", never "corrupt", and must trigger zero writes.
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      && Number.isInteger(parsed.configVersion) && parsed.configVersion > CONFIG_VERSION) {
+      return { kind: "future", state: parsed };
+    }
     if (!isValidStateShape(parsed)) return { kind: "corrupt" };
     return { kind: "ok", state: parsed };
   }
@@ -270,7 +277,7 @@ export function createPersonalizationStore(options = {}) {
     // BEFORE creating directories or deep-validating — a future-version state
     // must leave the data directory byte-identical (design §5.3 B).
     const read = readStateFile();
-    if (read.kind === "ok" && read.state.configVersion > CONFIG_VERSION) {
+    if (read.kind === "future" || (read.kind === "ok" && read.state.configVersion > CONFIG_VERSION)) {
       mode = "unsupported";
       state = read.state;
       return; // no ensureDirs, no validation, no GC, no staging cleanup

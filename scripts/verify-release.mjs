@@ -44,6 +44,12 @@ if (repoMatch === null) {
   if (typeof manifest.bugs?.url === "string" && !manifest.bugs.url.includes(repo)) {
     fail(`bugs.url must reference ${repo}, got "${manifest.bugs.url}"`);
   }
+  // In CI the repository identity is anchored to the checkout itself:
+  // three fields agreeing on the WRONG repo must still fail.
+  const ciRepo = process.env.GITHUB_REPOSITORY;
+  if (ciRepo !== undefined && ciRepo.toLowerCase() !== repo.toLowerCase()) {
+    fail(`repository.url points at ${repo} but this checkout is ${ciRepo}`);
+  }
 }
 
 if (tag === undefined) {

@@ -12,9 +12,18 @@ function makeEl(tag) {
 		tagName: tag, rel: "", type: "", href: "", textContent: "",
 		dataset: {}, style: { props: {}, setProperty(k, v) { this.props[k] = v; }, getPropertyValue(k) { return this.props[k] ?? ""; } },
 		children: [], removed: false,
-		append(c) { this.children.push(c); },
-		appendChild(c) { this.children.push(c); return c; },
-		remove() { this.removed = true; },
+		append(c) { c.parentElement = this; this.children.push(c); },
+		appendChild(c) { c.parentElement = this; this.children.push(c); return c; },
+		remove() {
+			this.removed = true;
+			// Real DOM semantics: removal detaches the node from its parent so
+			// later querySelector lookups cannot "resurrect" it (the runtime
+			// relies on this when rebuilding style tags).
+			if (this.parentElement && this.parentElement.children) {
+				const index = this.parentElement.children.indexOf(this);
+				if (index >= 0) this.parentElement.children.splice(index, 1);
+			}
+		},
 		get className() { return ""; },
 	};
 }
@@ -365,7 +374,7 @@ if (storage.get("dsh-skins:active") !== "official") throw new Error("official ap
 if (mod.selectSkin("default") !== "official") throw new Error("legacy \"default\" alias must normalize to official");
 if (storage.get("dsh-skins:active") !== "official") throw new Error("legacy \"default\" alias must persist as official");
 if (!tagOpenbmc.removed) throw new Error("custom skin style must be removed for the official appearance");
-if (!styleTag("openbmc.backdrop").removed) throw new Error("official appearance must remove the OpenBMC backdrop stylesheet");
+if (styleTag("openbmc.backdrop") !== undefined && !styleTag("openbmc.backdrop").removed) throw new Error("official appearance must remove the OpenBMC backdrop stylesheet");
 if (body.dataset.dshOpenbmcSkin !== undefined) throw new Error("official appearance must remove the OpenBMC body scope");
 if (!openbmcFavicon?.removed) throw new Error("official appearance must remove the custom favicon");
 if (document.title !== "标题实验 — DeepSeek Harness") throw new Error("official appearance must restore the official brand segment, got " + document.title);
@@ -386,10 +395,8 @@ if (document.title !== "标题实验 — UEFI Harness") throw new Error("uefi mo
 console.log("✓ UEFI body scope attr after switch:", body.dataset.dshUefiHarness === "");
 
 // ---- tgcf: personalization-aware skin, token layer + backdrop + hot-update ----
-// Cross-skin switches only replace the OFFICIAL brand segment (deliberate
-// semantics), so restore official first — exactly like the real renderer
-// would ~75ms after any skin switch.
-mod.selectSkin("official");
+// Direct UEFI → TGCF switch (no official detour): teardown-first mounting
+// restores the official brand segment before tgcf rebrands it.
 mod.selectSkin("tgcf");
 if (window.__DSH_SKINS__.active() !== "tgcf") throw new Error("tgcf must become active");
 if (body.dataset.dshTgcfSkin !== "") throw new Error("tgcf body scope attr missing");
@@ -417,6 +424,22 @@ if (ctx.theme._layers.get("dsh-skins/tgcf")) throw new Error("switching to offic
 mod.selectSkin("tgcf");
 if (!ctx.theme._layers.get("dsh-skins/tgcf")) throw new Error("re-selecting tgcf must re-register the token layer");
 console.log("✓ token override layers dispose and re-register across skin switches");
+
+// Hot-update (the config sync wiring fires this on every page load): the
+// rebuilt effects must fully replace the old set without tearing down the
+// live skin (the 9c19d5c regression this now guards against).
+const tgcfCssBefore = styleTag("tgcf");
+const tgcfTitleBefore = document.title;
+const hotUpdate = window.__DSH_SKINS__.hotUpdate();
+if (hotUpdate.applied !== true) throw new Error("hot update must apply, got " + JSON.stringify(hotUpdate));
+if (!styleTag("tgcf") || styleTag("tgcf").removed) throw new Error("hot update must keep the tgcf style tag alive");
+if (!styleTag("tgcf.backdrop") || styleTag("tgcf.backdrop").removed) throw new Error("hot update must keep the backdrop tag alive");
+if (body.dataset.dshTgcfSkin !== "") throw new Error("hot update must keep the body scope attribute");
+if (!ctx.theme._layers.get("dsh-skins/tgcf")) throw new Error("hot update must re-register the token layer");
+if (document.title !== tgcfTitleBefore) throw new Error("hot update must keep the rebranded title, got " + document.title);
+if (window.__DSH_SKINS__.active() !== "tgcf") throw new Error("hot update must not change the active skin");
+void tgcfCssBefore;
+console.log("✓ hot-update rebuilt effects with the live skin intact");
 
 // unknown id must throw
 let threw = false;

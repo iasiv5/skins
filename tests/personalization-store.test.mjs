@@ -566,3 +566,17 @@ test("Y5: recovery quarantines files whose extension contradicts the magic bytes
     return s.snapshot().library.every((meta) => meta.extension === "png");
   }
 });
+
+test("N2: a future-version state with a CHANGED shape boots unsupported with zero writes", () => {
+  const dir = tempDir();
+  // Future versions may rename/restructure the skeleton — that is exactly
+  // what a configVersion bump licenses. It must never read as "corrupt".
+  writeFileSync(join(dir, "state.json"), JSON.stringify({
+    configVersion: 99, revision: 3, skinsFuture: {}, libraryV2: {},
+  }));
+  const store = makeStore(dir);
+  assert.equal(store.getMode(), "unsupported");
+  assert.equal(existsSync(join(dir, "assets")), false, "no directories may be created");
+  assert.equal(existsSync(join(dir, "staging")), false);
+  assert.equal(existsSync(join(dir, "quarantine")), false);
+});
