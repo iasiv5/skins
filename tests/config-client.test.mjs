@@ -36,9 +36,8 @@ function makeFetch(handler) {
 }
 
 function flushingClient(fetchImpl) {
-  const client = createConfigClient({ fetchImpl, debounceMs: 1, timeoutMs: 50 });
-  // No timers in some environments; flush synchronously in tests.
-  return client;
+  // Explicit-save model: no debounce timer exists; save === flushNow().
+  return createConfigClient({ fetchImpl, timeoutMs: 50 });
 }
 
 test("boot transitions loading → synced and exposes the snapshot", async () => {
@@ -162,17 +161,79 @@ test("late responses after dispose are dropped", async () => {
   assert.equal(client.getState().status, "loading");
 });
 
-test("409 STORE_READONLY downgrades the client to read-only", async () => {
+test("409 STORE_READONLY downgrades the client to read-only WITHOUT a refetch", async () => {
   const fetchImpl = makeFetch((index, url, init) => {
     if (init.method === "PATCH") return jsonResponse(409, { code: "STORE_READONLY", error: "readonly" });
     return snapshotBody();
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
+  const callsAfterBoot = fetchImpl.calls.length;
   client.preview("tgcf", "blur", 3);
   assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict" });
   assert.equal(client.getState().status, "unsupported-readonly");
   assert.equal(client.getState().dirtyCount, 1, "dirty state retained for the UI");
+  assert.equal(fetchImpl.calls.length, callsAfterBoot + 1, "readonly downgrade performs no extra GET");
+  client.dispose();
+});
+
+test("409 revision conflict refetches the fresh snapshot so a retry can succeed", async () => {
+  const patches = [];
+  let revision = 7;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patches.push(JSON.parse(init.body));
+      if (patches.length === 1) return jsonResponse(409, { code: "IMPORT_CONFLICT", error: "stale" });
+      return jsonResponse(200, { revision: 9 });
+    }
+    // Every GET after the conflict reports the moved-forward revision.
+    if (fetchImpl.calls.filter((call) => call.init.method !== "PATCH").length > 1) revision = 8;
+    return snapshotBody({ revision });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "blur", 3);
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict" });
+  assert.equal(client.getState().revision, 8, "conflict path refetched the fresh snapshot");
+  assert.equal(client.getState().dirtyCount, 1, "previews survive the conflict for the retry");
+  assert.deepEqual(await client.flushNow(), { flushed: 1 });
+  assert.equal(patches[1].baseRevision, 8, "retry rides the new baseRevision");
+  client.dispose();
+});
+
+test("explicit-save model: previews never auto-flush; save is the only write path", async () => {
+  const fetchImpl = makeFetch(() => snapshotBody());
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const callsAfterBoot = fetchImpl.calls.length;
+  client.preview("tgcf", "blur", 3);
+  client.preview("tgcf", "scrim", 40);
+  client.previewReset("tgcf", "slogan");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(fetchImpl.calls.length, callsAfterBoot, "no PATCH without an explicit save");
+  assert.equal(client.getState().dirtyCount, 3);
+  client.dispose();
+});
+
+test("restore discards every preview and returns to the synced values", async () => {
+  const fetchImpl = makeFetch(() => snapshotBody({ skins: { tgcf: { blur: 5 } } }));
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "blur", 9);
+  client.preview("tgcf", "scrim", 60);
+  assert.equal(client.getState().dirtyCount, 2);
+  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 9, scrim: 60 });
+  client.restore();
+  assert.equal(client.getState().dirtyCount, 0);
+  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 5 }, "back to the synced snapshot");
+  client.dispose();
+});
+
+test("theme package methods no longer exist on the client", () => {
+  const client = flushingClient(makeFetch(() => snapshotBody()));
+  assert.equal(typeof client.exportTheme, "undefined");
+  assert.equal(typeof client.prepareThemeImport, "undefined");
+  assert.equal(typeof client.commitThemeImport, "undefined");
   client.dispose();
 });
 
@@ -216,7 +277,6 @@ test("a context switch (skin change) drops the in-flight snapshot", async () => 
   const fetchImpl = makeFetch(() => snapshotBody({ revision: 9 }));
   const contextClient = createConfigClient({
     fetchImpl,
-    debounceMs: 1,
     timeoutMs: 50,
     contextActive: () => active,
   });

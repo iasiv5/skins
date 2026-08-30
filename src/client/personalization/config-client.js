@@ -1,12 +1,14 @@
 /**
  * Config client — the browser-side state machine for personalization
- * (design §7.1). Four states:
+ * (design §7.1, explicit-save model per ADR-0001). Four states:
  *
  *   loading               initial fetch in flight (writes forbidden)
- *   synced                snapshot in hand; PATCH allowed
+ *   synced                snapshot in hand; 保存 (flushNow) allowed
  *   offline-failed        fetch failed/timed out; retry offered; writes forbidden
  *   unsupported-readonly  Host runs a newer configVersion; view-only
  *
+ * Edits live in the preview layer and project locally in real time, but
+ * NOTHING is persisted until the panel's 保存 button calls flushNow().
  * Guards (all covered by tests):
  *   - fetch arrives after the user already switched skins → applied anyway
  *     (config is orthogonal to skin selection), but late responses after
@@ -14,13 +16,15 @@
  *   - dirty preview fields are never overwritten by a late fetch (R3);
  *   - writes are serialized in order; a stale write response cannot roll a
  *     newer local state back (sequence checked before applying results);
+ *   - a revision-conflict 409 refetches the fresh snapshot (previews stay
+ *     dirty) so the next 保存 retries on the new baseRevision; a
+ *     STORE_READONLY 409 downgrades to read-only with no refetch;
  *   - writes emit `dsh-skins:config-changed` + a BroadcastChannel ping so
  *     other tabs refetch; window focus refetch is the fallback path.
  */
 
 const CHANNEL = "dsh-skins";
 const FETCH_TIMEOUT_MS = 3000;
-const FLUSH_DEBOUNCE_MS = 400;
 
 function cloneSkins(skins) {
   return skins === undefined || skins === null ? {} : structuredClone(skins);
@@ -30,19 +34,16 @@ export function createConfigClient(options = {}) {
   const fetchImpl = options.fetchImpl ?? (typeof fetch === "function" ? fetch : null);
   const baseUrl = options.baseUrl ?? "/dsh-skins";
   const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
-  const debounceMs = options.debounceMs ?? FLUSH_DEBOUNCE_MS;
-  const ownsTimers = typeof setTimeout === "function";
 
   if (typeof fetchImpl !== "function") throw new Error("config client requires a fetch implementation");
 
   let status = "loading";
   let snapshot = { skins: {}, library: [], references: {}, revision: 0, mode: "normal" };
-  const previews = new Map(); // `${skinId} ${key}` → value (dirty, unflushed)
+  const previews = new Map(); // `${skinId} ${key}` → value (dirty, unsaved)
   const listeners = new Set();
   let fetchGeneration = 0;
   let disposed = false;
   let writeChain = Promise.resolve();
-  let flushTimer = null;
   let channel = null;
 
   // -- plumbing --------------------------------------------------------------
@@ -140,10 +141,6 @@ export function createConfigClient(options = {}) {
   }
 
   function flushNow() {
-    if (flushTimer !== null && ownsTimers) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
     if (previews.size === 0) return Promise.resolve({ flushed: 0 });
     // Snapshot the dirty layer; previews captured here are the flush intent.
     const intent = [...previews.entries()];
@@ -165,7 +162,13 @@ export function createConfigClient(options = {}) {
         if (disposed) return { flushed: 0 };
         if (response.status === 409) {
           const body = await response.json().catch(() => null);
-          if (body?.code === "STORE_READONLY") setStatus("unsupported-readonly");
+          if (body?.code === "STORE_READONLY") {
+            setStatus("unsupported-readonly");
+            return { flushed: 0, blocked: "conflict" };
+          }
+          // Revision conflict: pull the fresh snapshot (previews stay dirty)
+          // so the user's next 保存 retries on the new baseRevision.
+          await refetch();
           return { flushed: 0, blocked: "conflict" };
         }
         if (!response.ok) {
@@ -192,15 +195,6 @@ export function createConfigClient(options = {}) {
     return writeChain;
   }
 
-  function scheduleFlush() {
-    if (!ownsTimers) return;
-    if (flushTimer !== null) clearTimeout(flushTimer);
-    flushTimer = setTimeout(() => {
-      flushTimer = null;
-      flushNow();
-    }, debounceMs);
-  }
-
   function announce() {
     try {
       if (typeof window !== "undefined" && typeof CustomEvent === "function") {
@@ -215,15 +209,21 @@ export function createConfigClient(options = {}) {
 
   // -- public API ------------------------------------------------------------
 
+  /** Record an unsaved edit: projects locally, persists nothing (ADR-0001). */
   function preview(skinId, key, value) {
     previews.set(`${skinId} ${key}`, value);
-    scheduleFlush();
     emit();
   }
 
+  /** Record an unsaved reset-to-default (a delete op) for the field. */
   function previewReset(skinId, key) {
-    previews.set(`${skinId} ${key}`, null); // null = delete op (reset to default)
-    scheduleFlush();
+    previews.set(`${skinId} ${key}`, null);
+    emit();
+  }
+
+  /** Discard every unsaved edit and return to the last synced values. */
+  function restore() {
+    previews.clear();
     emit();
   }
 
@@ -296,58 +296,6 @@ export function createConfigClient(options = {}) {
     return `${baseUrl}/assets/${meta.id}.${meta.extension}`;
   }
 
-  // -- theme packages (design §6) ---------------------------------------------
-
-  async function exportTheme(skinId) {
-    try {
-      const response = await request(`/theme/export/${skinId}`);
-      if (!response.ok) return { error: `HTTP ${response.status}` };
-      const disposition = typeof response.headers?.get === "function"
-        ? response.headers.get("content-disposition") ?? ""
-        : "";
-      const match = /filename="([^"]+)"/.exec(disposition);
-      return { blob: await response.blob(), filename: match?.[1] ?? `dsh-skins-theme-${skinId}.zip` };
-    } catch {
-      return { error: "offline" };
-    }
-  }
-
-  async function prepareThemeImport(bytes) {
-    const blocked = gateWrites();
-    if (blocked !== null) return { error: blocked };
-    try {
-      const response = await request("/theme/import?action=prepare", {
-        method: "POST",
-        headers: { "content-type": "application/zip" },
-        body: bytes,
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) return { error: body?.code ?? `HTTP ${response.status}` };
-      return { prepare: body };
-    } catch {
-      return { error: "offline" };
-    }
-  }
-
-  async function commitThemeImport({ importToken, baseRevision, confirm, purgeUnknown }) {
-    const blocked = gateWrites();
-    if (blocked !== null) return { error: blocked };
-    try {
-      const response = await request("/theme/import?action=commit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ importToken, baseRevision, confirm, purgeUnknown }),
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) return { error: body?.code ?? `HTTP ${response.status}` };
-      await refetch();
-      announce();
-      return { result: body };
-    } catch {
-      return { error: "offline" };
-    }
-  }
-
   const api = {
     boot: refetch,
     refetch,
@@ -355,14 +303,12 @@ export function createConfigClient(options = {}) {
     flushNow,
     preview,
     previewReset,
+    restore,
     effectiveOverrides,
     uploadImage,
     deleteImage,
     confirmRecovery,
     assetUrl,
-    exportTheme,
-    prepareThemeImport,
-    commitThemeImport,
     getState: publicState,
     writeBlocked: gateWrites,
     onStateChange(listener) {
@@ -372,7 +318,6 @@ export function createConfigClient(options = {}) {
     dispose() {
       disposed = true;
       fetchGeneration += 1; // invalidate any in-flight response
-      if (flushTimer !== null && ownsTimers) clearTimeout(flushTimer);
       try { channel?.close(); } catch {}
       try {
         if (typeof window !== "undefined") window.removeEventListener("focus", onFocus);
