@@ -304,7 +304,11 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     };
 
     const backToList = () => {
-      setPersonalizeId(null);
+      // Leaving the panel is the switcher's state (personalizeId), reported
+      // through onBack — the panel must never reach for the host component's
+      // setter (the 1.0.0 build shipped an unbound `setPersonalizeId` call
+      // here, so every 返回 click died in a ReferenceError).
+      onBack?.();
       try {
         document.getElementById(`${skinId}-gear`)?.focus?.();
       } catch {}
