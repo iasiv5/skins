@@ -8,7 +8,9 @@
  * validation) and an orthogonal `scope` (persistence shape):
  *   single       → scalar            (panelOpacity: 82)
  *   locale       → { zh, en }        (slogan)
- *   colorScheme  → { light, dark }   (accent, scrim)
+ *   colorScheme  → { light, dark }   (no shipped field uses it since the
+ *                                     simplification; machinery stays for
+ *                                     future skins)
  * LWW granularity is the WHOLE scope object: clients must submit complete
  * objects; nothing merges sub-keys implicitly.
  */
@@ -74,19 +76,6 @@ export const SKINS = {
     fields: [
       { ...WALLPAPER_FIELD, default: "builtin:tgcf:lanterns", builtinChoices: ["lanterns", "butterflies", "mountains", "maples"] },
       {
-        key: "favicon",
-        type: "image",
-        scope: "single",
-        labelKey: "personalization.favicon",
-        default: "builtin:tgcf:lantern-favicon",
-        builtinChoices: ["lantern-favicon"],
-        allowedUserMime: USER_IMAGE_MIMES,
-        maxBytes: 1024 * 1024,
-        maxWidth: 512,
-        maxHeight: 512,
-        maxPixels: 512 * 512,
-      },
-      {
         key: "slogan",
         type: "text",
         scope: "locale",
@@ -101,27 +90,6 @@ export const SKINS = {
         labelKey: "personalization.titleBrand",
         maxLength: 24,
         default: "天官赐福",
-      },
-      {
-        key: "accent",
-        type: "color",
-        scope: "colorScheme",
-        labelKey: "personalization.accent",
-        default: { light: "#C3272B", dark: "#E0564A" },
-      },
-      {
-        key: "gold",
-        type: "color",
-        scope: "colorScheme",
-        labelKey: "personalization.gold",
-        default: { light: "#C9A227", dark: "#D4AF37" },
-      },
-      {
-        key: "bubbleColor",
-        type: "color",
-        scope: "colorScheme",
-        labelKey: "personalization.bubble",
-        default: { light: "#C3272B", dark: "#8E2A2F" },
       },
       {
         key: "panelOpacity",
@@ -146,15 +114,16 @@ export const SKINS = {
         default: 12,
       },
       {
+        // Simplification (Q35): one value for both themes, factory default 30.
         key: "scrim",
         type: "range",
-        scope: "colorScheme",
+        scope: "single",
         labelKey: "personalization.scrim",
         min: 0,
         max: 100,
         step: 1,
         unit: "%",
-        default: { light: 18, dark: 42 },
+        default: 30,
       },
     ],
   },

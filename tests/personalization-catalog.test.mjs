@@ -70,18 +70,21 @@ test("validateOverride: locale text requires complete {zh,en} objects", () => {
 });
 
 test("validateOverride: colors need 6-digit hex in both schemes", () => {
-  assert.equal(validateOverride("tgcf", "accent", { light: "#C3272B", dark: "#E0564A" }).ok, true);
-  assert.deepEqual(validateOverride("tgcf", "accent", { light: "#xyz", dark: "#E0564A" }), { ok: false, code: "BAD_SHAPE" });
-  assert.deepEqual(validateOverride("tgcf", "accent", { light: "#C3272B" }), { ok: false, code: "BAD_SHAPE" });
+  // The simplification removed every shipped color field; the generic
+  // color validation stays covered through the catalog type machinery.
+  assert.equal(getField("tgcf", "accent"), null);
+  assert.equal(getField("tgcf", "gold"), null);
+  assert.equal(getField("tgcf", "bubbleColor"), null);
+  assert.deepEqual(validateOverride("tgcf", "accent", { light: "#C3272B", dark: "#E0564A" }), { ok: false, code: "UNKNOWN_FIELD" });
 });
 
-test("validateOverride: ranges clamp to min/max in single and colorScheme scopes", () => {
+test("validateOverride: ranges clamp to min/max in single scopes", () => {
   assert.equal(validateOverride("tgcf", "panelOpacity", 82).ok, true);
   assert.deepEqual(validateOverride("tgcf", "panelOpacity", 101), { ok: false, code: "BAD_VALUE" });
   assert.deepEqual(validateOverride("tgcf", "panelOpacity", 29), { ok: false, code: "BAD_VALUE" });
   assert.deepEqual(validateOverride("tgcf", "panelOpacity", "82"), { ok: false, code: "BAD_VALUE" });
-  assert.equal(validateOverride("tgcf", "scrim", { light: 0, dark: 100 }).ok, true);
-  assert.deepEqual(validateOverride("tgcf", "scrim", { light: 18, dark: 142 }), { ok: false, code: "BAD_SHAPE" });
+  assert.equal(validateOverride("tgcf", "scrim", 30).ok, true, "scrim is a single-value field since the simplification");
+  assert.deepEqual(validateOverride("tgcf", "scrim", { light: 0, dark: 100 }), { ok: false, code: "BAD_VALUE" }, "legacy light/dark pair shape is gone");
 });
 
 test("validateOverride: image builtin refs must belong to the owning skin", () => {
@@ -104,10 +107,10 @@ test("validateOverride: provider metadata enforces existence, mime, bytes and pi
     validateOverride("tgcf", "wallpaper", USER_ID, () => ({ ...okWallpaper, mime: "image/svg+xml" })),
     { ok: false, code: "BAD_ASSET" },
   );
-  // Favicon field: 2MB exceeds its 1MB cap even though the global cap allows more.
+  // Favicon field removed by the simplification: its id is now unknown.
   assert.deepEqual(
-    validateOverride("tgcf", "favicon", USER_ID, () => ({ mime: "image/png", byteLength: 2 * 1024 * 1024, width: 64, height: 64 })),
-    { ok: false, code: "BAD_ASSET" },
+    validateOverride("tgcf", "favicon", USER_ID, () => ({ mime: "image/png", byteLength: 1024, width: 64, height: 64 })),
+    { ok: false, code: "UNKNOWN_FIELD" },
   );
   // GIF pixels are tightened to GIF_MAX_PIXELS even below the field cap.
   const gifWide = { mime: "image/gif", byteLength: 1024, width: 5000, height: 3000 }; // 15MP > 12MP
@@ -128,19 +131,19 @@ test("mergeValues: defaults fill untouched fields, overrides win when valid", ()
   assert.equal(values.panelOpacity, 60);
   assert.equal(values.titleBrand, "天官赐福");
   assert.equal(values.wallpaper, "builtin:tgcf:lanterns");
-  assert.deepEqual(values.scrim, { light: 18, dark: 42 });
+  assert.equal(values.scrim, 30);
 });
 
 test("mergeValues: layer-1 fallback swaps invalid overrides for defaults and reports issues", () => {
   const { values, issues } = mergeValues("tgcf", {
     panelOpacity: 500,
-    accent: { light: "#nope", dark: "#E0564A" },
+    scrim: 142,
     unknownFutureKey: { any: "shape" },
   });
   assert.equal(values.panelOpacity, 82);
-  assert.deepEqual(values.accent, { light: "#C3272B", dark: "#E0564A" });
-  assert.deepEqual(issues.map((issue) => issue.key).sort(), ["accent", "panelOpacity"]);
-  // Unknown keys are ignored by projection (the store preserves them).
+  assert.equal(values.scrim, 30);
+  assert.deepEqual(issues.map((issue) => issue.key).sort(), ["panelOpacity", "scrim"]);
+  // Unknown keys are ignored by projection (the store normalizes them away at load).
   assert.equal("unknownFutureKey" in values, false);
 });
 
@@ -161,9 +164,10 @@ test("mergeValues: unknown skin yields empty values without throwing", () => {
 
 test("accessors expose schema, fields, asset fields and defaults", () => {
   const schema = getSkinSchema("tgcf");
-  assert.equal(schema.fields.length, 10);
+  assert.equal(schema.fields.length, 6);
+  assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "titleBrand", "panelOpacity", "blur", "scrim"]);
   assert.equal(getField("tgcf", "blur").max, 24);
-  assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper", "favicon"]);
+  assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper"]);
   assert.deepEqual(listAssetFields("openbmc").map((field) => field.key), ["wallpaper"]);
   assert.equal(defaultsFor("tgcf").titleBrand, "天官赐福");
   assert.equal(defaultsFor("uefi-harness").wallpaper, "builtin:uefi-harness:art");
@@ -177,10 +181,9 @@ test("pixel budgets stay coherent with the design contract", () => {
 test("range values must sit on the declared step grid", () => {
   assert.equal(validateOverride("tgcf", "blur", 5).ok, true);
   assert.deepEqual(validateOverride("tgcf", "blur", 5.5), { ok: false, code: "BAD_VALUE" });
-  assert.equal(validateOverride("tgcf", "scrim", { light: 18.5, dark: 42 }).ok, false);
+  assert.equal(validateOverride("tgcf", "scrim", 18.5).ok, false);
 });
 
 test("scope objects must carry exactly their canonical keys", () => {
   assert.deepEqual(validateOverride("tgcf", "slogan", { zh: "一", en: "One", fr: "Un" }), { ok: false, code: "BAD_SHAPE" });
-  assert.deepEqual(validateOverride("tgcf", "accent", { light: "#C3272B", dark: "#E0564A", extra: 1 }), { ok: false, code: "BAD_SHAPE" });
 });

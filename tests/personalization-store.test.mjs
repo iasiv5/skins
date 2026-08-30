@@ -437,7 +437,7 @@ test("R3: concurrent commits of one token collapse into a single state change", 
   await source.applyOperations({
     operations: [
       { op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id },
-      { op: "set", skinId: "tgcf", key: "favicon", value: asset.id },
+      { op: "set", skinId: "openbmc", key: "wallpaper", value: asset.id },
     ],
   });
   const pkg = source.exportTheme("tgcf");
@@ -493,27 +493,6 @@ test("R4: a GC failure after a successful import commit never deletes referenced
   assert.match(committedId, /^u_[0-9a-f]{32}$/);
   assert.equal(existsSync(join(dir, "assets", `${committedId}.png`)), true, "committed blob must survive");
   assert.equal(snapshot.library.length, 1);
-});
-
-test("Y3: one asset backing wallpaper and favicon exports exactly once", async () => {
-  const source = makeStore(tempDir());
-  const { asset } = await source.uploadAsset(pngBytes(64, 64), { displayName: "small.png" });
-  await source.applyOperations({
-    operations: [
-      { op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id },
-      { op: "set", skinId: "tgcf", key: "favicon", value: asset.id },
-    ],
-  });
-  const pkg = source.exportTheme("tgcf");
-  const { readStoreOnlyZip } = await import("../src/host/personalization/zip.js");
-  const parsed = readStoreOnlyZip(pkg.zip);
-  const manifest = JSON.parse(parsed.manifest.toString("utf8"));
-  assert.equal(parsed.assets.size, 1, "no duplicate ZIP entries");
-  assert.equal(manifest.assets.length, 1);
-  const target = makeStore(tempDir());
-  const prepare = await target.prepareImport(pkg.zip);
-  await target.commitImport({ importToken: prepare.importToken, baseRevision: prepare.baseRevision, confirm: true });
-  assert.equal(target.snapshot().skins.tgcf.wallpaper, target.snapshot().skins.tgcf.favicon);
 });
 
 test("Y4: prepare rejects packages whose images fail ingest validation", async () => {

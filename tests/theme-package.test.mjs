@@ -186,7 +186,7 @@ test("builtin refs travel as plain strings and need no asset entry", async () =>
   await source.applyOperations({
     operations: [
       { op: "set", skinId: "tgcf", key: "wallpaper", value: "builtin:tgcf:butterflies" },
-      { op: "set", skinId: "tgcf", key: "accent", value: { light: "#111111", dark: "#222222" } },
+      { op: "set", skinId: "tgcf", key: "scrim", value: 33 },
     ],
   });
   const pkg = source.exportTheme("tgcf");
@@ -200,5 +200,5 @@ test("builtin refs travel as plain strings and need no asset entry", async () =>
   await target.commitImport({ importToken: prepare.importToken, baseRevision: prepare.baseRevision, confirm: true });
   const section = target.snapshot().skins.tgcf;
   assert.equal(section.wallpaper, "builtin:tgcf:butterflies");
-  assert.deepEqual(section.accent, { light: "#111111", dark: "#222222" });
+  assert.equal(section.scrim, 33);
 });

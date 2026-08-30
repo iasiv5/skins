@@ -167,6 +167,17 @@ function panelBase(lightMode, alpha) {
   return lightMode ? `rgba(255,252,246,${alpha})` : `rgba(24,16,16,${alpha})`;
 }
 
+/**
+ * Static identity palette since the personalization simplification (Q35):
+ * accent/gold/bubbleColour stopped being editable fields, but the skin's
+ * visual identity keeps the exact values that used to be catalog defaults.
+ */
+const PALETTE = {
+  accent: { light: "#C3272B", dark: "#E0564A" },
+  gold: { light: "#C9A227", dark: "#D4AF37" },
+  bubble: { light: "#C3272B", dark: "#8E2A2F" },
+};
+
 export function createTgcfSkin(jsxRuntime) {
   const { jsx } = jsxRuntime;
 
@@ -208,15 +219,19 @@ export function createTgcfSkin(jsxRuntime) {
 
   function project(values, assets) {
     const alpha = Math.min(1, Math.max(0.3, values.panelOpacity / 100));
-    const scrimLight = `linear-gradient(rgba(255,246,234,${(values.scrim.light / 100).toFixed(3)}),rgba(255,246,234,${(values.scrim.light / 100).toFixed(3)}))`;
-    const scrimDark = `linear-gradient(rgba(14,7,8,${(values.scrim.dark / 100).toFixed(3)}),rgba(14,7,8,${(values.scrim.dark / 100).toFixed(3)}))`;
+    // Single-value scrim (Q35): one alpha drives both theme overlays; the
+    // base tint stays per-theme (warm white veil / ink veil).
+    const scrimAlpha = (values.scrim / 100).toFixed(3);
+    const scrimLight = `linear-gradient(rgba(255,246,234,${scrimAlpha}),rgba(255,246,234,${scrimAlpha}))`;
+    const scrimDark = `linear-gradient(rgba(14,7,8,${scrimAlpha}),rgba(14,7,8,${scrimAlpha}))`;
     const wallpaperUrl = assets.wallpaper?.url ?? null;
-    const faviconAsset = assets.favicon ?? null;
+    // The favicon field is gone (Q35): the lantern icon is a static skin asset.
+    const faviconAsset = builtinAssets["lantern-favicon"];
     return {
       bodyAttribute: "dshTgcfSkin",
       slogans: values.slogan ?? null,
       titleBrand: values.titleBrand ?? null,
-      favicon: faviconAsset === null ? null : { href: faviconAsset.url, mime: faviconAsset.mime },
+      favicon: { href: faviconAsset.url, mime: faviconAsset.mime },
       backdrop: {
         imageLight: wallpaperUrl === null ? null : `url("${wallpaperUrl}")`,
         imageDark: wallpaperUrl === null ? null : `url("${wallpaperUrl}")`,
@@ -225,13 +240,13 @@ export function createTgcfSkin(jsxRuntime) {
         blur: values.blur,
       },
       tokenOverrides: {
-        "--dsw-alias-brand-primary": values.accent,
-        "--dsw-alias-brand-text": values.gold,
-        "--dsw-alias-button-primary-fill": values.accent,
-        "--dsw-alias-button-primary-hover": values.gold,
+        "--dsw-alias-brand-primary": PALETTE.accent,
+        "--dsw-alias-brand-text": PALETTE.gold,
+        "--dsw-alias-button-primary-fill": PALETTE.accent,
+        "--dsw-alias-button-primary-hover": PALETTE.gold,
         "--dsw-alias-bg-base": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
         "--dsw-specific-sidebar-fill": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
-        "--dsw-specific-bubble": values.bubbleColor,
+        "--dsw-specific-bubble": PALETTE.bubble,
       },
       cssVariables: null,
       staticCss: CSS,

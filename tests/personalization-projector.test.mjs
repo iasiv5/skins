@@ -3,12 +3,19 @@ import test from "node:test";
 import { normalizeEffects, projectSkin } from "../src/client/personalization/projector.js";
 import { defaultsFor } from "../src/shared/personalization/catalog.js";
 
+/** Static tgcf palette since the simplification (colors are baked, not fields). */
+const PALETTE = {
+  accent: { light: "#C3272B", dark: "#E0564A" },
+  bubble: { light: "#C3272B", dark: "#8E2A2F" },
+};
+
 /** A tgcf-like fixture: custom projector mapping values → effects. */
 function fixtureSkin() {
   return {
     id: "tgcf",
     bodyAttr: "dshTgcfSkin",
     project(values, assets) {
+      const scrimAlpha = (values.scrim / 100).toFixed(3);
       return {
         bodyAttribute: "dshTgcfSkin",
         slogans: values.slogan,
@@ -17,13 +24,13 @@ function fixtureSkin() {
         backdrop: {
           imageLight: `url("${assets.wallpaper?.url ?? "about:blank"}")`,
           imageDark: `url("${assets.wallpaper?.url ?? "about:blank"}")`,
-          overlayLight: `rgba(0,0,0,${(values.scrim.light ?? 0) / 100})`,
-          overlayDark: `rgba(0,0,0,${(values.scrim.dark ?? 0) / 100})`,
+          overlayLight: `rgba(0,0,0,${scrimAlpha})`,
+          overlayDark: `rgba(0,0,0,${scrimAlpha})`,
           blur: values.blur,
         },
         tokenOverrides: {
-          "--dsw-alias-accent": values.accent,
-          "--dsw-specific-bubble": values.bubbleColor,
+          "--dsw-alias-accent": PALETTE.accent,
+          "--dsw-specific-bubble": PALETTE.bubble,
         },
         cssVariables: {
           "--dsh-panel-alpha": { light: `${values.panelOpacity}%`, dark: `${values.panelOpacity}%` },
@@ -61,26 +68,28 @@ function legacySkin() {
 test("projection with overrides succeeds without degradation", () => {
   const result = projectSkin(fixtureSkin(), {
     slogan: { zh: "自定义", en: "Custom" },
-    accent: { light: "#111111", dark: "#222222" },
+    scrim: 60,
     blur: 20,
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.effects.slogans, { zh: "自定义", en: "Custom" });
   assert.equal(result.effects.backdrop.blur, 20);
-  assert.equal(result.effects.tokenOverrides["--dsw-alias-accent"].light, "#111111");
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.600)");
+  assert.equal(result.effects.backdrop.overlayDark, "rgba(0,0,0,0.600)", "single scrim drives both overlays");
+  assert.equal(result.effects.tokenOverrides["--dsw-alias-accent"].light, "#C3272B");
   assert.equal(result.effects.staticCss, "body[data-dsh-tgcf-skin] .x{color:red}");
   assert.equal(result.effects.decorations[0].key, "lanterns");
 });
 
 test("layer-1 field fallback keeps projection healthy with bad overrides", () => {
   const result = projectSkin(fixtureSkin(), {
-    accent: { light: "#bad", dark: "#222222" }, // invalid member → field default
-    blur: 999,                                  // out of range → field default
+    scrim: 999,   // out of range → field default
+    blur: 999,    // out of range → field default
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
-  assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["accent", "blur"]);
-  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-accent"], { light: "#C3272B", dark: "#E0564A" });
+  assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["blur", "scrim"]);
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)"); // catalog default 30
   assert.equal(result.effects.backdrop.blur, 12); // catalog default
 });
 
@@ -224,4 +233,27 @@ test("the REAL openbmc and uefi factories project their baked defaults verbatim"
     assert.equal(result.effects.staticCss, skin.css);
     assert.equal(result.effects.bodyAttribute, skin.bodyAttr);
   }
+});
+
+test("the REAL tgcf factory projects single scrim, static palette and static favicon", async () => {
+  const { createTgcfSkin } = await import("../src/client/skins/tgcf/index.js");
+  // No-arg calls throw at the jsxRuntime destructure; stub it (review ③-4②).
+  const skin = createTgcfSkin({ jsx: () => null });
+  const resolverFor = (ref) => ({ url: `builtin://${ref.skinId}/${ref.assetKey}`, mime: "image/svg+xml" });
+  const result = projectSkin(skin, {}, { assetResolver: resolverFor });
+  assert.equal(result.degraded, "none");
+  // Single-value scrim (default 30) drives BOTH overlays with one alpha.
+  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.300),rgba(255,246,234,0.300))");
+  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.300),rgba(14,7,8,0.300))");
+  assert.equal(result.effects.backdrop.blur, 12);
+  assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/lanterns")');
+  // Favicon is a static skin asset since the field was removed.
+  assert.equal(result.effects.favicon.href, skin.favicon);
+  assert.equal(result.effects.favicon.mime, "image/svg+xml");
+  // Colors are baked into the skin (the fields are gone but the identity is not).
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-primary"], { light: "#C3272B", dark: "#E0564A" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-text"], { light: "#C9A227", dark: "#D4AF37" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-bubble"], { light: "#C3272B", dark: "#8E2A2F" });
+  assert.ok(result.effects.tokenOverrides["--dsw-alias-bg-base"].light.startsWith("rgba(255,252,246,"));
+  assert.deepEqual(result.effects.slogans, { zh: "千灯引路 · 长夜同明", en: "A thousand lights before the dawn" });
 });
