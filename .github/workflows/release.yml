@@ -45,3 +45,6 @@ jobs:
         with:
           files: .artifacts/dsh-skins-*.tgz
           generate_release_notes: true
+      - name: Delete the failed tag
+        if: failure()
+        run: git push origin ":${GITHUB_REF_NAME}"

@@ -171,3 +171,58 @@ test("crc32 matches zlib for a known vector", () => {
   // CRC-32("123456789") = 0xCBF43926 (canonical test vector).
   assert.equal(crc32(Buffer.from("123456789")), 0xcbf43926);
 });
+
+test("rejects local/central CRC, size and version mismatches", () => {
+  // Central CRC differs from the local record for the same entry.
+  const centralTweaked = rawZip([{ name: "manifest.json", data: MANIFEST }], {
+    patch: {},
+  });
+  void centralTweaked; // builder keeps them equal by design; corrupt one manually:
+  const archive = rawZip([{ name: "manifest.json", data: MANIFEST }]);
+  // Local CRC lives at localOffset+14; flip it after serialization.
+  const localNameLength = archive.readUInt16LE(26);
+  void localNameLength;
+  const corrupted = Buffer.from(archive);
+  corrupted.writeUInt32LE(crc32(MANIFEST) ^ 0xffff, 14);
+  rejects(corrupted, /local\/central CRC or size mismatch/);
+  // Version-needed mismatch between local and central records.
+  const versionTweaked = Buffer.from(rawZip([{ name: "manifest.json", data: MANIFEST }]));
+  versionTweaked.writeUInt16LE(21, 4); // local version-needed
+  rejects(versionTweaked, /local\/central version mismatch|unsupported version/);
+});
+
+test("rejects structural gaps between entries (unclaimed payload)", () => {
+  // Hand-assemble: locals1 + "xx" + locals2, central records claiming the
+  // shifted offsets, EOCD consistent — only the 2-byte gap is anomalous.
+  const first = rawEntry({ name: "manifest.json", data: MANIFEST });
+  const second = rawEntry({ name: "assets/a.png", data: PNG });
+  const gap = Buffer.from("xx");
+  const secondOffset = first.local.length + gap.length;
+  const centralOffset = secondOffset + second.local.length;
+  const central = (built, offset) => {
+    const record = Buffer.alloc(46 + built.nameBytes.length);
+    record.writeUInt32LE(0x02014b50, 0);
+    record.writeUInt16LE(20, 4);
+    record.writeUInt16LE(20, 6);
+    record.writeUInt16LE(0, 8);
+    record.writeUInt16LE(0, 10);
+    record.writeUInt16LE(0, 12);
+    record.writeUInt16LE(0, 14);
+    record.writeUInt32LE(built.crc, 16);
+    record.writeUInt32LE(built.size, 20);
+    record.writeUInt32LE(built.size, 24);
+    record.writeUInt16LE(built.nameBytes.length, 28);
+    record.writeUInt32LE(offset, 42);
+    built.nameBytes.copy(record, 46);
+    return record;
+  };
+  const centralDirectory = Buffer.concat([central(first, 0), central(second, secondOffset)]);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(2, 8);
+  eocd.writeUInt16LE(2, 10);
+  eocd.writeUInt32LE(centralDirectory.length, 12);
+  eocd.writeUInt32LE(centralOffset, 16);
+  const gapped = Buffer.concat([first.local, gap, second.local, centralDirectory, eocd]);
+  rejects(gapped, /gaps or unclaimed payload/);
+});

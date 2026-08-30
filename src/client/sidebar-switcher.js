@@ -198,8 +198,8 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
 
     react.useEffect(() => {
       const onChange = () => setActiveId(runtime.active());
-      window.addEventListener("dsh-skins:changed", onChange);
-      return () => window.removeEventListener("dsh-skins:changed", onChange);
+      window.addEventListener("dsh-skins:active-changed", onChange);
+      return () => window.removeEventListener("dsh-skins:active-changed", onChange);
     }, []);
 
     react.useEffect(() => ctx.on("theme/change", (snapshot) => {
@@ -260,7 +260,9 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           title: localeTranslate("personalization.title"),
           "aria-expanded": personalizeId === skin.id,
           onClick: () => {
-            setActiveId(skin.id);
+            // Opening the panel selects the skin so edits preview live.
+            runtime.select(skin.id);
+            setActiveId(runtime.active());
             setPersonalizeId(personalizeId === skin.id ? null : skin.id);
           },
           children: [

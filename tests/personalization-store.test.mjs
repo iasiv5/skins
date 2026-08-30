@@ -6,14 +6,16 @@ import { join } from "node:path";
 import {
   existsSync as fExists, mkdirSync as fMkdir, readFileSync as fRead, writeFileSync as fWrite,
   renameSync as fRename, unlinkSync as fUnlink, readdirSync as fReaddir, rmdirSync as fRmdir,
-  statSync as fStat, statfsSync as fStatfs,
+  statSync as fStat, statfsSync as fStatfs, copyFileSync as fCopy,
+  openSync as fOpen, closeSync as fClose,
 } from "node:fs";
 import { createPersonalizationStore } from "../src/host/personalization/store.js";
 
 const REAL_FS = {
   existsSync: fExists, mkdirSync: fMkdir, readFileSync: fRead, writeFileSync: fWrite,
   renameSync: fRename, unlinkSync: fUnlink, readdirSync: fReaddir, rmdirSync: fRmdir,
-  statSync: fStat, statfsSync: fStatfs,
+  statSync: fStat, statfsSync: fStatfs, copyFileSync: fCopy,
+  openSync: fOpen, closeSync: fClose,
 };
 
 const NOW = 1_700_000_000_000;
@@ -306,25 +308,25 @@ test("GC removes stray blobs on the next commit but never library members", asyn
   assert.deepEqual(names, [`${asset.id}.png`]);
 });
 
-test("fault injection: a failed blob rename leaves no library entry and no state change", async () => {
+test("fault injection: a failed blob create leaves no library entry and no state change", async () => {
   const dir = tempDir();
-  let assetRenames = 0;
+  let blobCreates = 0;
   const store = makeStore(dir, {
-    renameSync: (from, to) => {
-      // Fail only the first blob rename into assets/, never the atomic
-      // state-file renames (so the store itself boots normally).
-      if (String(to).includes("/assets/")) {
-        assetRenames += 1;
-        if (assetRenames === 1) throw new Error("simulated crash before commit");
+    openSync: (file, flags) => {
+      // Fail only the first exclusive blob create, never the state writer
+      // (which never opens files with "wx").
+      if (flags === "wx" && String(file).includes("/assets/")) {
+        blobCreates += 1;
+        if (blobCreates === 1) throw new Error("simulated crash before commit");
       }
-      return fRename(from, to);
+      return fOpen(file, flags);
     },
   });
   await assert.rejects(store.uploadAsset(pngBytes(), { displayName: "w" }), /simulated crash/);
   const snapshot = store.snapshot();
   assert.deepEqual(snapshot.library, []);
   assert.equal(snapshot.revision, 0);
-  // The next upload still works (staging was cleaned).
+  // The next upload still works.
   const result = await store.uploadAsset(pngBytes(), { displayName: "w2" });
   assert.equal(result.revision, 1);
 });
@@ -358,4 +360,209 @@ test("interleaved mutations from two clients never lose each other's fields", as
   assert.deepEqual(snapshot.skins.tgcf.slogan, { zh: "一", en: "One" });
   assert.equal(snapshot.skins.openbmc.wallpaper, "builtin:openbmc:art");
   assert.equal(snapshot.revision, 2);
+});
+
+// ---- review-round regressions (data safety, concurrency, crash windows) ----
+
+test("R1: a semantically corrupt library boots into recovery and keeps every blob", async () => {
+  const dir = tempDir();
+  const store = makeStore(dir);
+  const { asset } = await store.uploadAsset(pngBytes(), { displayName: "w" });
+  const statePath = join(dir, "state.json");
+  const raw = JSON.parse(readFileSync(statePath, "utf8"));
+  raw.library.bogus = {}; // id-shape violation must not pass as normal
+  writeFileSync(statePath, JSON.stringify(raw));
+
+  const reopened = makeStore(dir);
+  const snapshot = reopened.snapshot();
+  assert.equal(snapshot.mode, "recovery");
+  // The real blob survived: the unvalidated state never fed the GC.
+  assert.equal(readdirSync(join(dir, "assets")).length, 1);
+  assert.equal(snapshot.recovery.candidateLibrary[asset.id] !== undefined, true);
+  assert.ok(snapshot.recovery.quarantine.length >= 0);
+});
+
+test("R1: unsupported configVersion boots without creating any directory", async () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, "state.json"), JSON.stringify({
+    configVersion: 99, revision: 1, skins: {}, library: {},
+  }));
+  const store = makeStore(dir);
+  assert.equal(store.getMode(), "unsupported");
+  assert.equal(existsSync(join(dir, "assets")), false, "assets/ must not be created");
+  assert.equal(existsSync(join(dir, "staging")), false, "staging/ must not be created");
+});
+
+test("R2: a failing recovery commit moves nothing and can be retried", async () => {
+  const dir = tempDir();
+  const seed = makeStore(dir);
+  const { asset } = await seed.uploadAsset(pngBytes(), { displayName: "w" });
+  writeFileSync(join(dir, "state.json"), "broken");
+  writeFileSync(join(dir, "assets", "u_ffffffffffffffffffffffffffffffff.png"), Buffer.from("junk"));
+
+  let failCommits = false;
+  let stateWrites = 0;
+  const store = makeStore(dir, {
+    writeFileSync: (file, data) => {
+      if (String(file).includes("state.json")) {
+        stateWrites += 1;
+        if (failCommits && stateWrites >= 1) throw new Error("simulated recovery commit crash");
+      }
+      return fWrite(file, data);
+    },
+  });
+  assert.equal(store.snapshot().mode, "recovery");
+  failCommits = true;
+  await assert.rejects(store.confirmRecovery(), /simulated recovery commit crash/);
+  // Nothing moved: the junk file is still in assets/ and the corrupt state
+  // file is still in place (only a backup COPY may exist).
+  assert.equal(existsSync(join(dir, "assets", "u_ffffffffffffffffffffffffffffffff.png")), true);
+  assert.equal(existsSync(join(dir, "state.json")), true);
+  assert.equal(existsSync(join(dir, "quarantine")), false, "no quarantine dir before commit");
+
+  // Retry after the fault clears: recovery completes deterministically.
+  failCommits = false;
+  const store2 = makeStore(dir);
+  await store2.confirmRecovery();
+  const snapshot = store2.snapshot();
+  assert.equal(snapshot.mode, "normal");
+  assert.equal(snapshot.library.length, 1);
+  assert.equal(snapshot.library[0].id, asset.id);
+  assert.equal(existsSync(join(dir, "quarantine", "u_ffffffffffffffffffffffffffffffff.png")), true);
+});
+
+test("R3: concurrent commits of one token collapse into a single state change", async () => {
+  const source = makeStore(tempDir());
+  const { asset } = await source.uploadAsset(pngBytes(8, 8), { displayName: "tiny.png" });
+  await source.applyOperations({
+    operations: [
+      { op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id },
+      { op: "set", skinId: "tgcf", key: "favicon", value: asset.id },
+    ],
+  });
+  const pkg = source.exportTheme("tgcf");
+  const target = makeStore(tempDir());
+  const prepare = await target.prepareImport(pkg.zip);
+  const params = { importToken: prepare.importToken, baseRevision: prepare.baseRevision, confirm: true };
+  const [first, second] = await Promise.all([target.commitImport(params), target.commitImport(params)]);
+  assert.deepEqual(first, second);
+  const snapshot = target.snapshot();
+  assert.equal(snapshot.revision, 1, "one visible state change only");
+  assert.equal(snapshot.library.length, 1);
+});
+
+test("R3: two tokens on the same stale baseRevision — the loser gets 409", async () => {
+  const source = makeStore(tempDir());
+  const { asset } = await source.uploadAsset(pngBytes(8, 8), { displayName: "tiny.png" });
+  await source.applyOperations({
+    operations: [{ op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id }],
+  });
+  const pkg = source.exportTheme("tgcf");
+  const target = makeStore(tempDir());
+  const first = await target.prepareImport(pkg.zip);
+  const second = await target.prepareImport(pkg.zip);
+  await target.commitImport({ importToken: first.importToken, baseRevision: first.baseRevision, confirm: true });
+  await assert.rejects(target.commitImport({
+    importToken: second.importToken, baseRevision: second.baseRevision, confirm: true,
+  }), (e) => e.code === "IMPORT_CONFLICT");
+});
+
+test("R4: a GC failure after a successful import commit never deletes referenced blobs", async () => {
+  const source = makeStore(tempDir());
+  const { asset } = await source.uploadAsset(pngBytes(8, 8), { displayName: "tiny.png" });
+  await source.applyOperations({
+    operations: [{ op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id }],
+  });
+  const pkg = source.exportTheme("tgcf");
+
+  const dir = tempDir();
+  // Boot once to create the directory layout, then plant a stray blob so the
+  // post-commit GC definitely has an unlink to attempt (and fail on).
+  makeStore(dir).snapshot(); // force the lazy boot to create the layout
+  writeFileSync(join(dir, "assets", "u_abababababababababababababababab.png"), pngBytes(3, 3));
+  const store = makeStore(dir, {
+    unlinkSync: () => { throw new Error("simulated GC failure"); },
+  });
+  const prepare = await store.prepareImport(pkg.zip);
+  const result = await store.commitImport({
+    importToken: prepare.importToken, baseRevision: prepare.baseRevision, confirm: true,
+  });
+  assert.ok(result.revision >= 1);
+  const snapshot = store.snapshot();
+  const committedId = snapshot.skins.tgcf.wallpaper;
+  assert.match(committedId, /^u_[0-9a-f]{32}$/);
+  assert.equal(existsSync(join(dir, "assets", `${committedId}.png`)), true, "committed blob must survive");
+  assert.equal(snapshot.library.length, 1);
+});
+
+test("Y3: one asset backing wallpaper and favicon exports exactly once", async () => {
+  const source = makeStore(tempDir());
+  const { asset } = await source.uploadAsset(pngBytes(64, 64), { displayName: "small.png" });
+  await source.applyOperations({
+    operations: [
+      { op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id },
+      { op: "set", skinId: "tgcf", key: "favicon", value: asset.id },
+    ],
+  });
+  const pkg = source.exportTheme("tgcf");
+  const { readStoreOnlyZip } = await import("../src/host/personalization/zip.js");
+  const parsed = readStoreOnlyZip(pkg.zip);
+  const manifest = JSON.parse(parsed.manifest.toString("utf8"));
+  assert.equal(parsed.assets.size, 1, "no duplicate ZIP entries");
+  assert.equal(manifest.assets.length, 1);
+  const target = makeStore(tempDir());
+  const prepare = await target.prepareImport(pkg.zip);
+  await target.commitImport({ importToken: prepare.importToken, baseRevision: prepare.baseRevision, confirm: true });
+  assert.equal(target.snapshot().skins.tgcf.wallpaper, target.snapshot().skins.tgcf.favicon);
+});
+
+test("Y4: prepare rejects packages whose images fail ingest validation", async () => {
+  const { writeStoreOnlyZip } = await import("../src/host/personalization/zip.js");
+  const garbage = Buffer.alloc(40, 0xab);
+  const pkg = writeStoreOnlyZip([
+    { name: "manifest.json", data: Buffer.from(JSON.stringify({
+      formatVersion: 1,
+      skinId: "tgcf",
+      fields: { wallpaper: { $asset: "assets/u_0123456789abcdef0123456789abcdef.png" } },
+      assets: [{ file: "assets/u_0123456789abcdef0123456789abcdef.png", sha256: "" }],
+    })) },
+    { name: "assets/u_0123456789abcdef0123456789abcdef.png", data: garbage },
+  ]);
+  const target = makeStore(tempDir());
+  // Fix the sha so the failure comes from sniffing, not hashing.
+  const { createHash } = await import("node:crypto");
+  const sha = createHash("sha256").update(garbage).digest("hex");
+  const fixed = writeStoreOnlyZip([
+    { name: "manifest.json", data: Buffer.from(JSON.stringify({
+      formatVersion: 1,
+      skinId: "tgcf",
+      fields: { wallpaper: { $asset: "assets/u_0123456789abcdef0123456789abcdef.png" } },
+      assets: [{ file: "assets/u_0123456789abcdef0123456789abcdef.png", sha256: sha }],
+    })) },
+    { name: "assets/u_0123456789abcdef0123456789abcdef.png", data: garbage },
+  ]);
+  void pkg;
+  await assert.rejects(target.prepareImport(fixed), (e) => e.code === "UNSUPPORTED_IMAGE");
+});
+
+test("Y5: recovery quarantines files whose extension contradicts the magic bytes", async () => {
+  const dir = tempDir();
+  const store = makeStore(dir);
+  const { asset } = await store.uploadAsset(pngBytes(), { displayName: "w" });
+  void asset;
+  // PNG bytes under a .jpg name: sniff says png, name says jpg.
+  const png = pngBytes();
+  const id = "u_11111111111111111111111111111111";
+  writeFileSync(join(dir, "state.json"), "broken");
+  writeFileSync(join(dir, "assets", `${id}.jpg`), png);
+  const recovered = makeStore(dir);
+  const snapshot = recovered.snapshot();
+  assert.equal(snapshot.mode, "recovery");
+  assert.deepEqual(snapshot.recovery.quarantine, [`${id}.jpg`]);
+  await recovered.confirmRecovery();
+  assert.equal(existsSync(join(dir, "quarantine", `${id}.jpg`)), true);
+  assert.equal(reopenedLibraryHasOnlyValid(recovered), true);
+  function reopenedLibraryHasOnlyValid(s) {
+    return s.snapshot().library.every((meta) => meta.extension === "png");
+  }
 });

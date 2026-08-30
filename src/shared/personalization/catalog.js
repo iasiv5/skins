@@ -227,6 +227,9 @@ function scopeKeys(scope) {
 function validScopeObject(value, scope, checkMember) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const keys = scopeKeys(scope);
+  // Exact key set: no missing members, no extra members (Y6 — one canonical
+  // persistence shape per scope).
+  if (Object.keys(value).length !== keys.length) return false;
   for (const key of keys) {
     if (!Object.prototype.hasOwnProperty.call(value, key)) return false;
     if (!checkMember(value[key])) return false;
@@ -242,7 +245,13 @@ function validateTextMember(value, field) {
 
 function validateRangeMember(value, field) {
   if (typeof value !== "number" || !Number.isFinite(value)) return false;
-  return value >= field.min && value <= field.max;
+  if (value < field.min || value > field.max) return false;
+  // Step grid: every persisted value sits on the declared step lattice.
+  if (field.step !== undefined && field.step > 0) {
+    const steps = (value - field.min) / field.step;
+    if (Math.abs(steps - Math.round(steps)) > 1e-9) return false;
+  }
+  return true;
 }
 
 function validateScalar(value, field) {
@@ -272,6 +281,11 @@ function validateImageRef(value, field, skinId, meta) {
   }
   if (meta === undefined || meta === null) return true;
   // Field-level constraints from trusted metadata (design §6).
+  return metaSatisfiesField(field, meta);
+}
+
+/** Field-level asset constraints against trusted AssetMeta (design §6). */
+export function metaSatisfiesField(field, meta) {
   if (typeof meta.mime !== "string" || !field.allowedUserMime.includes(meta.mime)) return false;
   if (meta.byteLength > field.maxBytes) return false;
   if (meta.width > field.maxWidth || meta.height > field.maxHeight) return false;

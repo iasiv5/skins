@@ -201,6 +201,19 @@ if (probe) {
 // ---- gate: semi-automated release assertions (design §13) ----
 // Run against a GUI with the 1.0.0 plugin installed:
 //   node scripts/capture-previews.mjs --skin tgcf --gate
+/** Privacy gate shared by --gate and the full capture (R13): every frame
+ *  written to docs/assets must pass through this preparation. */
+async function preparePrivateCapture(page) {
+  const started = await startEmptySession(page);
+  if (!started) console.warn("WARN: New Session button not found — conversation area may show existing content.");
+  const remaining = await collapseWorkspaces(page);
+  if (remaining > 0) throw new Error(`privacy gate failed: ${remaining} workspace row(s) still expanded`);
+  const banners = await hideForeignBanners(page);
+  if (banners.length > 0) console.log("hidden foreign banner(s):", banners);
+  const privacy = await privacyCheck(page);
+  return privacy;
+}
+
 if (gate) {
   const failures = [];
   const check = (ok, label) => {
@@ -208,7 +221,7 @@ if (gate) {
     if (!ok) failures.push(label);
   };
   const { context: gctx, page: gpage } = await newPage("dark");
-  await startEmptySession(gpage);
+  await preparePrivateCapture(gpage);
 
   // 1. Every catalog skin card exposes a keyboard-focusable gear.
   await openSwitcher(gpage);
@@ -252,13 +265,7 @@ if (gate) {
 // ---- full capture: <skin> dark / light + switcher close-up ----
 const { context, page } = await newPage("dark");
 
-const startedEmpty = await startEmptySession(page);
-if (!startedEmpty) console.warn("WARN: New Session button not found — conversation area may show existing content.");
-const expandedLeft = await collapseWorkspaces(page);
-if (expandedLeft > 0) throw new Error(`privacy gate failed: ${expandedLeft} workspace row(s) still expanded`);
-const banners = await hideForeignBanners(page);
-if (banners.length > 0) console.log("hidden foreign banner(s):", banners);
-const privacy = await privacyCheck(page);
+const privacy = await preparePrivateCapture(page);
 console.log("workspace rows:", JSON.stringify(privacy.workspaces));
 
 await openSwitcher(page);

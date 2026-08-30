@@ -72,20 +72,25 @@ async function readJsonBody(request, limit = 128 * 1024) {
     chunks.push(buffer);
   }
   if (size === 0) return {};
-  const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  let value;
+  try {
+    value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw codedError("INVALID_CONFIG", "请求体不是合法 JSON");
+  }
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw codedError("INVALID_CONFIG", "invalid request body");
   }
   return value;
 }
 
-async function readRawBody(request, limit) {
+async function readRawBody(request, limit, overflowCode = "UPLOAD_TOO_LARGE") {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
-    if (size > limit) throw codedError("UPLOAD_TOO_LARGE", "request body too large");
+    if (size > limit) throw codedError(overflowCode, "request body too large");
     chunks.push(buffer);
   }
   return Buffer.concat(chunks);
@@ -111,6 +116,10 @@ export function mountPersonalizationRoutes(host, options) {
     sendJson(response, 403, { error: "trusted DSH Web request required" });
     return false;
   };
+
+  // Registration is itself transactional: a mid-mount throw disposes every
+  // route registered so far instead of leaking partial mounts.
+  try {
 
   // --- config: GET snapshot / PATCH field operations ------------------------
 
@@ -239,7 +248,7 @@ export function mountPersonalizationRoutes(host, options) {
         if (action === "prepare") {
           const declared = Number(header(request.headers, "content-length") ?? "0");
           if (declared > THEME_ARCHIVE_LIMIT) throw codedError("IMPORT_TOO_LARGE", "主题包超过 80MB 上限");
-          const buffer = await readRawBody(request, THEME_ARCHIVE_LIMIT + 1024);
+          const buffer = await readRawBody(request, THEME_ARCHIVE_LIMIT + 1024, "IMPORT_TOO_LARGE");
           return sendJson(response, 200, await store.prepareImport(buffer));
         }
         if (action === "commit") {
@@ -279,6 +288,13 @@ export function mountPersonalizationRoutes(host, options) {
     },
   });
   disposers.push(themeExportRoute);
+
+  } catch (error) {
+    for (let index = disposers.length - 1; index >= 0; index -= 1) {
+      try { disposers[index](); } catch {}
+    }
+    throw error;
+  }
 
   return () => {
     for (const dispose of disposers) dispose();

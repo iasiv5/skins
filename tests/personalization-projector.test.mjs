@@ -174,3 +174,54 @@ test("skins outside the catalog fail closed with no effects", () => {
   assert.equal(result.degraded, "failed");
   assert.equal(result.effects, null);
 });
+
+// ---- review-round regressions: freeze, resolver fallback, real factories ----
+
+test("normalized effects are deeply frozen", () => {
+  const result = projectSkin(fixtureSkin(), {}, { assetResolver: resolver });
+  assert.equal(Object.isFrozen(result.effects), true);
+  assert.equal(Object.isFrozen(result.effects.slogans), true);
+  assert.equal(Object.isFrozen(result.effects.tokenOverrides), true);
+  assert.equal(Object.isFrozen(result.effects.tokenOverrides["--dsw-alias-accent"]), true);
+  assert.equal(Object.isFrozen(result.effects.backdrop), true);
+  assert.throws(() => { result.effects.titleBrand = "mutate"; }, TypeError);
+});
+
+test("a null asset resolution fails closed instead of dropping the effect", () => {
+  const brokenResolver = () => null; // every ref fails, including defaults
+  const failing = projectSkin(fixtureSkin(), { blur: 20 }, { assetResolver: brokenResolver });
+  assert.equal(failing.degraded, "failed");
+  assert.equal(failing.effects, null);
+});
+
+test("a user wallpaper that cannot resolve falls back to the default builtin", () => {
+  const semiResolver = (ref) => (ref.kind === "builtin" ? resolver(ref) : null);
+  const result = projectSkin(fixtureSkin(), { wallpaper: "u_0123456789abcdef0123456789abcdef" }, {
+    assetResolver: semiResolver,
+  });
+  assert.equal(result.degraded, "defaults");
+  assert.equal(result.effects.backdrop.imageLight.includes("builtin://tgcf/lanterns"), true);
+});
+
+test("the REAL openbmc and uefi factories project their baked defaults verbatim", async () => {
+  const { createOpenBmcHarness } = await import("../src/client/skins/openbmc-harness/index.js");
+  const { createUefiHarness } = await import("../src/client/skins/uefi-harness/index.js");
+  const stubJsx = { jsx: () => null };
+  for (const factory of [createOpenBmcHarness, createUefiHarness]) {
+    const skin = factory(stubJsx);
+    const resolverFor = (ref) => ({
+      url: `builtin://${ref.skinId}/${ref.assetKey}`,
+      mime: "image/webp",
+    });
+    const result = projectSkin(skin, {}, { assetResolver: resolverFor });
+    assert.equal(result.degraded, "none", skin.id);
+    // Byte-equivalence against the factory's own baked strings (design §9).
+    assert.equal(result.effects.backdrop.imageLight, skin.art === "" ? skin.placeholderLight : skin.scrimLight);
+    assert.equal(result.effects.backdrop.imageDark, skin.art === "" ? skin.placeholderDark : skin.scrimDark);
+    assert.deepEqual(result.effects.slogans, skin.slogans);
+    assert.equal(result.effects.titleBrand, skin.title);
+    assert.equal(result.effects.favicon.href, skin.favicon);
+    assert.equal(result.effects.staticCss, skin.css);
+    assert.equal(result.effects.bodyAttribute, skin.bodyAttr);
+  }
+});

@@ -17,6 +17,14 @@ window.__ModuleLoader__.load({
     const skinById = new Map();
     for (const factory of [createOpenBmcHarness, createUefiHarness, createTgcfSkin]) {
       const skin = factory(jsxRuntime);
+      if (skin.builtinAssets === undefined) {
+        // Legacy skins resolve their builtin art ref through their own baked
+        // strings (the projector's legacy adapter never needs the URL, but
+        // resolution failure must not be a pipeline failure).
+        skin.builtinAssets = {
+          art: { mime: "image/webp", url: skin.art !== "" ? skin.art : skin.placeholderLight },
+        };
+      }
       skinById.set(skin.id, skin);
       runtime.register(skin);
     }
@@ -58,6 +66,9 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       installRemoteThemePersistence(ctx);
       ctx.effect(() => runtime.apply(ctx), "dsh-skins: active skin");
+      if (configClient !== null) {
+        ctx.effect(() => () => configClient.dispose(), "dsh-skins: config client");
+      }
       try {
         installSidebarSwitcher(ctx, {
           runtime,

@@ -21,6 +21,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Release preflight (version + repository identity)
+        run: node scripts/verify-release.mjs
       - run: pnpm run check
       - name: Verify generated Host and client bundles are committed
         run: git diff --exit-code -- lib/index.js lib/client.js

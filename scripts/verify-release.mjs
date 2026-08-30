@@ -30,6 +30,21 @@ if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
 if (manifest.name !== "dsh-skins") {
   fail(`package.json name must be dsh-skins, got "${manifest.name}"`);
 }
+// Repository identity: the self-updater pins tag↔version↔repository, so a
+// mismatched identity must fail HERE rather than in the updater.
+const repoUrl = manifest.repository?.url ?? "";
+const repoMatch = /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/i.exec(repoUrl);
+if (repoMatch === null) {
+  fail(`package.json repository.url must point at GitHub, got "${repoUrl}"`);
+} else {
+  const repo = repoMatch[1];
+  if (typeof manifest.homepage === "string" && !manifest.homepage.includes(repo)) {
+    fail(`homepage must reference ${repo}, got "${manifest.homepage}"`);
+  }
+  if (typeof manifest.bugs?.url === "string" && !manifest.bugs.url.includes(repo)) {
+    fail(`bugs.url must reference ${repo}, got "${manifest.bugs.url}"`);
+  }
+}
 
 if (tag === undefined) {
   console.log(`verify-release: package ${manifest.name}@${version} OK (no tag given)`);

@@ -16,24 +16,21 @@ function parsePng(buffer) {
   if (buffer.length < 24) return null;
   if (ascii(buffer, 0, 8) !== "\x89PNG\r\n\x1a\n") return null;
   if (ascii(buffer, 12, 4) !== "IHDR") return null;
-  return {
-    mime: "image/png",
-    width: buffer.readUInt32BE(16),
-    height: buffer.readUInt32BE(20),
-    animated: false,
-  };
+  if (buffer.readUInt32BE(8) !== 13) return null; // IHDR carries exactly 13 bytes
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (width === 0 || height === 0) return null;
+  return { mime: "image/png", width, height, animated: false };
 }
 
 function parseGif(buffer) {
   if (buffer.length < 10) return null;
   const signature = ascii(buffer, 0, 6);
   if (signature !== "GIF87a" && signature !== "GIF89a") return null;
-  return {
-    mime: "image/gif",
-    width: buffer.readUInt16LE(6),
-    height: buffer.readUInt16LE(8),
-    animated: null, // frame counting is out of scope; GIF animation is allowed
-  };
+  const width = buffer.readUInt16LE(6);
+  const height = buffer.readUInt16LE(8);
+  if (width === 0 || height === 0) return null;
+  return { mime: "image/gif", width, height, animated: null };
 }
 
 const JPEG_SOF_MARKERS = new Set([
@@ -55,12 +52,10 @@ function parseJpeg(buffer) {
     const length = buffer.readUInt16BE(offset + 2);
     if (length < 2) return null;
     if (JPEG_SOF_MARKERS.has(marker)) {
-      return {
-        mime: "image/jpeg",
-        height: buffer.readUInt16BE(offset + 5),
-        width: buffer.readUInt16BE(offset + 7),
-        animated: false,
-      };
+      const width = buffer.readUInt16BE(offset + 7);
+      const height = buffer.readUInt16BE(offset + 5);
+      if (width === 0 || height === 0) return null;
+      return { mime: "image/jpeg", width, height, animated: false };
     }
     offset += 2 + length;
   }
@@ -70,7 +65,11 @@ function parseJpeg(buffer) {
 function parseWebp(buffer) {
   if (buffer.length < 30) return null;
   if (ascii(buffer, 0, 4) !== "RIFF" || ascii(buffer, 8, 4) !== "WEBP") return null;
+  // Container self-consistency: the RIFF size must not exceed the buffer.
+  if (buffer.readUInt32LE(4) + 8 > buffer.length) return null;
   const chunk = ascii(buffer, 12, 4);
+  const chunkSize = buffer.readUInt32LE(16);
+  if (20 + chunkSize > buffer.length) return null;
   if (chunk === "VP8X") {
     const flags = buffer[20];
     const width = buffer.readUIntLE(24, 3) + 1;
@@ -78,23 +77,19 @@ function parseWebp(buffer) {
     return { mime: "image/webp", width, height, animated: (flags & 0x02) !== 0 };
   }
   if (chunk === "VP8 ") {
-    if (ascii(buffer, 20, 3) !== "\x9d\x01\x2a") return null;
-    return {
-      mime: "image/webp",
-      width: buffer.readUInt16LE(26) & 0x3fff,
-      height: buffer.readUInt16LE(28) & 0x3fff,
-      animated: false,
-    };
+    // Simple lossy: 3-byte frame tag, then the start code at offset 23.
+    if (ascii(buffer, 23, 3) !== "\x9d\x01\x2a") return null;
+    const width = buffer.readUInt16LE(26) & 0x3fff;
+    const height = buffer.readUInt16LE(28) & 0x3fff;
+    if (width === 0 || height === 0) return null;
+    return { mime: "image/webp", width, height, animated: false };
   }
   if (chunk === "VP8L") {
     if (buffer[20] !== 0x2f) return null;
     const bits = buffer.readUInt32LE(21);
-    return {
-      mime: "image/webp",
-      width: (bits & 0x3fff) + 1,
-      height: ((bits >> 14) & 0x3fff) + 1,
-      animated: false,
-    };
+    const width = (bits & 0x3fff) + 1;
+    const height = ((bits >> 14) & 0x3fff) + 1;
+    return { mime: "image/webp", width, height, animated: false };
   }
   return null;
 }

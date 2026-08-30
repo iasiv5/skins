@@ -386,6 +386,10 @@ if (document.title !== "标题实验 — UEFI Harness") throw new Error("uefi mo
 console.log("✓ UEFI body scope attr after switch:", body.dataset.dshUefiHarness === "");
 
 // ---- tgcf: personalization-aware skin, token layer + backdrop + hot-update ----
+// Cross-skin switches only replace the OFFICIAL brand segment (deliberate
+// semantics), so restore official first — exactly like the real renderer
+// would ~75ms after any skin switch.
+mod.selectSkin("official");
 mod.selectSkin("tgcf");
 if (window.__DSH_SKINS__.active() !== "tgcf") throw new Error("tgcf must become active");
 if (body.dataset.dshTgcfSkin !== "") throw new Error("tgcf body scope attr missing");

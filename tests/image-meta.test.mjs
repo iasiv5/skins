@@ -109,3 +109,33 @@ test("deflate roundtrip sanity for test fixtures", () => {
   const original = Buffer.from("dsh-skins");
   assert.equal(deflateSync(original).length > 0, true);
 });
+
+test("WebP VP8 (simple lossy) start code sits after the 3-byte frame tag", () => {
+  const b = Buffer.alloc(40);
+  b.write("RIFF", 0, "latin1");
+  b.writeUInt32LE(b.length - 8, 4);
+  b.write("WEBP", 8, "latin1");
+  b.write("VP8 ", 12, "latin1");
+  b.writeUInt32LE(10, 16);
+  b[20] = 0x30; b[21] = 0x01; b[22] = 0x00; // frame tag
+  b[23] = 0x9d; b[24] = 0x01; b[25] = 0x2a; // start code
+  b.writeUInt16LE(1920, 26);
+  b.writeUInt16LE(1080, 28);
+  assert.deepEqual(detectImageMeta(b), { mime: "image/webp", width: 1920, height: 1080, animated: false });
+  // A start code at the WRONG offset (the old bug) must not validate.
+  const shifted = Buffer.from(b);
+  shifted[23] = 0; shifted[24] = 0; shifted[25] = 0;
+  assert.equal(detectImageMeta(shifted), null);
+});
+
+test("zero dimensions and inconsistent containers are rejected", () => {
+  const zero = png();
+  zero.writeUInt32BE(0, 16);
+  assert.equal(detectImageMeta(zero), null);
+  const badIhdr = png();
+  badIhdr.writeUInt32BE(99, 8); // IHDR length must be 13
+  assert.equal(detectImageMeta(badIhdr), null);
+  const badRiff = webpVp8x(0x10);
+  badRiff.writeUInt32LE(10_000_000, 4); // RIFF size exceeds the buffer
+  assert.equal(detectImageMeta(badRiff), null);
+});

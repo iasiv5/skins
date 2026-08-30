@@ -41,16 +41,24 @@ export function apply(ctx) {
       dataDir: join(root, "dsh-skins"),
     });
     hostContext.effect(() => {
-      const disposeUpdate = mountUpdateRoutes(hostContext, {
-        updater,
-        restart,
-        agents: hostContext.agents,
-        trustedHosts: hostContext.webRuntime.trustedHosts,
-      });
-      const disposePersonalization = mountPersonalizationRoutes(hostContext, {
-        store: personalization,
-        trustedHosts: hostContext.webRuntime.trustedHosts,
-      });
+      let disposeUpdate = null;
+      let disposePersonalization = null;
+      try {
+        disposeUpdate = mountUpdateRoutes(hostContext, {
+          updater,
+          restart,
+          agents: hostContext.agents,
+          trustedHosts: hostContext.webRuntime.trustedHosts,
+        });
+        disposePersonalization = mountPersonalizationRoutes(hostContext, {
+          store: personalization,
+          trustedHosts: hostContext.webRuntime.trustedHosts,
+        });
+      } catch (error) {
+        disposePersonalization?.();
+        disposeUpdate?.();
+        throw error;
+      }
       return () => {
         disposePersonalization();
         disposeUpdate();

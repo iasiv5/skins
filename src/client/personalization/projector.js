@@ -31,32 +31,46 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function deepFreeze(value) {
+  if (value === null || typeof value !== "object") return value;
+  for (const child of Object.values(value)) deepFreeze(child);
+  return Object.freeze(value);
+}
+
 function optionalString(value) {
   if (value === undefined || value === null) return null;
   return typeof value === "string" ? value : undefined; // undefined = invalid
 }
 
 /**
- * Validate and freeze a SkinEffects draft. Returns the normalized shape or
- * null when the draft is structurally invalid (triggers layer-2 fallback).
+ * Validate and freeze a SkinEffects draft. The draft is cloned first (the
+ * caller's objects are never shared or frozen), validated, and returned as a
+ * recursively IMMUTABLE structure — or null when structurally invalid
+ * (triggers layer-2 fallback).
  */
 export function normalizeEffects(draft) {
-  if (!isPlainObject(draft)) return null;
-  if (typeof draft.bodyAttribute !== "string" || !DATASET_KEY.test(draft.bodyAttribute)) return null;
+  let source;
+  try {
+    source = structuredClone(draft);
+  } catch {
+    return null;
+  }
+  if (!isPlainObject(source)) return null;
+  if (typeof source.bodyAttribute !== "string" || !DATASET_KEY.test(source.bodyAttribute)) return null;
 
-  const slogans = draft.slogans ?? null;
+  const slogans = source.slogans ?? null;
   if (slogans !== null && (!isPlainObject(slogans)
     || typeof slogans.zh !== "string" || typeof slogans.en !== "string")) return null;
 
-  const titleBrand = optionalString(draft.titleBrand);
+  const titleBrand = optionalString(source.titleBrand);
   if (titleBrand === undefined) return null;
 
-  const favicon = draft.favicon ?? null;
+  const favicon = source.favicon ?? null;
   if (favicon !== null && (!isPlainObject(favicon)
     || typeof favicon.href !== "string" || favicon.href.length === 0
     || typeof favicon.mime !== "string")) return null;
 
-  const backdrop = draft.backdrop ?? null;
+  const backdrop = source.backdrop ?? null;
   if (backdrop !== null) {
     if (!isPlainObject(backdrop)) return null;
     for (const key of ["imageLight", "imageDark", "overlayLight", "overlayDark"]) {
@@ -67,7 +81,7 @@ export function normalizeEffects(draft) {
     if (typeof blur !== "number" || !(blur >= 0 && blur <= 24)) return null;
   }
 
-  const tokenOverrides = draft.tokenOverrides ?? null;
+  const tokenOverrides = source.tokenOverrides ?? null;
   if (tokenOverrides !== null) {
     if (!isPlainObject(tokenOverrides)) return null;
     for (const value of Object.values(tokenOverrides)) {
@@ -75,7 +89,7 @@ export function normalizeEffects(draft) {
     }
   }
 
-  const cssVariables = draft.cssVariables ?? null;
+  const cssVariables = source.cssVariables ?? null;
   if (cssVariables !== null) {
     if (!isPlainObject(cssVariables)) return null;
     for (const value of Object.values(cssVariables)) {
@@ -83,10 +97,10 @@ export function normalizeEffects(draft) {
     }
   }
 
-  const staticCss = optionalString(draft.staticCss);
+  const staticCss = optionalString(source.staticCss);
   if (staticCss === undefined) return null;
 
-  const decorations = draft.decorations ?? null;
+  const decorations = source.decorations ?? null;
   if (decorations !== null) {
     if (!Array.isArray(decorations)) return null;
     for (const decoration of decorations) {
@@ -95,8 +109,8 @@ export function normalizeEffects(draft) {
     }
   }
 
-  return {
-    bodyAttribute: draft.bodyAttribute,
+  return deepFreeze({
+    bodyAttribute: source.bodyAttribute,
     slogans,
     titleBrand,
     favicon,
@@ -111,7 +125,7 @@ export function normalizeEffects(draft) {
     cssVariables,
     staticCss,
     decorations,
-  };
+  });
 }
 
 /**
@@ -177,7 +191,15 @@ export function projectSkin(skin, rawOverrides, context = {}) {
     for (const field of schema.fields) {
       if (field.type !== "image") continue;
       const ref = resolveImageRef(values[field.key]);
-      if (ref !== null) resolvedAssets[field.key] = context.assetResolver?.(ref) ?? null;
+      if (ref === null) continue;
+      const resolved = context.assetResolver?.(ref) ?? null;
+      if (resolved === null || typeof resolved.url !== "string" || resolved.url.length === 0) {
+        // Resolution failure is a PIPELINE failure (design §3): the whole
+        // projection re-runs on defaults instead of silently dropping the
+        // effect (and fails closed when even defaults cannot resolve).
+        throw new Error(`asset resolution failed for ${skin.id}.${field.key}`);
+      }
+      resolvedAssets[field.key] = resolved;
     }
     return { issues, normalized: normalizeEffects(project(values, resolvedAssets)) };
   };

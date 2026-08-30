@@ -1,6 +1,6 @@
-# dsh-skins 1.0.0 设计文档 v2.2：声明式个性化框架 + 「天官赐福 · 百无禁忌」皮肤
+# dsh-skins 1.0.0 设计文档 v2.3：声明式个性化框架 + 「天官赐福 · 百无禁忌」皮肤
 
-> 状态：**v2.2**（三轮差异复核修订）。产品决策树（Q1–Q34）与架构不变；本版完成开工前最后消歧：恢复模式拆两分支、三层回退语义、staticCss 预作用域、maxPixels、GIF 风险措辞修正。异议记录见 §21。
+> 状态：**v2.3**（实现评审修订）。产品决策树（Q1–Q34）与架构不变；v2.2 契约之外，本版记录两项经实现评审确认的修订：SkinEffects backdrop 接口形状（§3a）与旧皮肤 scrim 字段偏差（§9a，待产品负责人批准）。
 > 版本目标：单版本 **1.0.0** 全量交付，每个 commit 保持 `pnpm run check` 绿色；发布流程见 §16（preflight → tag → tag workflow → Release）。
 
 ---
@@ -48,6 +48,24 @@
 - **全局 revision 覆盖一切可见状态提交**：config PATCH、上传、删除、导入 commit 全部递增同一全局 revision（导入 baseRevision 因此对 library 变化也敏感）
 
 ## 3. SkinEffects 精确 interface（冻结）
+## 3a. v2.3 修订：backdrop 接口形状
+
+实现评审（R8）指出 v2.2 冻结的 `{ image, scrim:{light,dark}, blur }` 无法表达旧皮肤按明暗分层的
+烘焙背景（placeholder/scrim 双态字符串）。经裁决，接口修订为：
+
+```js
+backdrop: {
+  imageLight, imageDark,       // CSS background-image 值（url/gradient/dataURL），明暗各一
+  overlayLight, overlayDark,   // 可选叠层（tgcf 的数字 scrim 由 project 派生为 rgba 渐变）
+  blur,                        // 0–24px，作用于 fixed 伪元素
+}
+```
+
+理由：单 `image` + 数字 `scrim` 是 tgcf 专有视角；明暗双图 + 双 overlay 统一覆盖 tgcf（壁纸+派生遮罩）
+与旧皮肤（烘焙双态字符串）两条投影路径，且 legacy 适配器因此得以保持与 0.6.0 逐字节等价。
+数字 scrim → rgba 的转换归皮肤 project() 所有（tgcf 已实现）。归一化结果深冻结（递归 Object.freeze）。
+
+
 
 ```js
 {
@@ -165,6 +183,14 @@ store-only 基础上追加：单磁盘（disk number 必须为 0）；恰好一�
 
 prepare token 状态机：`prepared → committed`（保存 result 供重试）`/ expired`。同一 token + 相同参数重试 → 返回同一 result（网络重试幂等）；同 token 不同参数 → 409；TTL 后 → 410。commit 经 store 串行队列 + baseRevision 校验。
 
+## 9a. v2.3 待批偏差：旧皮肤仅开放壁纸字段
+
+v2.2 §9 要求 openbmc/uefi-harness 开放 wallpaper + scrim 两字段。实现中 scrim 为
+range×colorScheme 数字概念，而旧皮肤的"遮罩"是烘焙进 art 的渐变字符串——实现数字 scrim
+无法同时满足「与 0.6.0 行为逐字节等价」的更强约束。取舍：**旧皮肤仅开放 wallpaper 字段**
+（scrim 字段只属于 tgcf）。该偏差已写入 README，**待产品负责人显式批准**；未获批准前不得
+宣称完全符合 v2.2/v2.3。
+
 ## 10. tgcf 完整 catalog 表（R6.4，冻结）
 
 皮肤 id `tgcf`；bodyAttr `dshTgcfSkin`（CSS 作用域 `body[data-dsh-tgcf-skin]`）；label zh「天官赐福 · 百无禁忌」en「Heaven Official's Blessing」。
@@ -274,7 +300,7 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 
 ## 20. 终审记录
 
-Q1–Q34（产品）→ v1 → v2（一轮评审 R1–R8/Y1–Y10/补充）→ v2.1（二轮评审 R1–R6/Y1–Y10 + PATCH 两补充）→ v2.2（三轮差异复核：恢复分支拆分 1–3 + 消歧 4–7）。契约闭合，七处文字已全部落实，待开工确认。
+Q1–Q34（产品）→ v1 → v2 → v2.1 → v2.2（三轮差异复核）→ **v2.3（实现评审修订：backdrop 接口形状 §3a、旧皮肤 scrim 偏差 §9a 待批）**。实现评审的 13 项红项已全部修复并附回归测试。
 
 ## 21. 对二轮评审的异议记录
 

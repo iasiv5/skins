@@ -146,8 +146,13 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
 
   function ImageField({ skinId, field, value, onValue, state, disabled }) {
     const uploadRef = useRef(null);
+    const [uploadMessage, setUploadMessage] = useState(null);
+    const [visible, setVisible] = useState(PAGE_SIZE);
     const schema = getSkinSchema(skinId);
     const builtins = schema?.builtinAssets ?? {};
+    // Catalog metadata carries mime/labelKey only; the renderable URLs live
+    // on the registered skin instance (builtinAssetsFor).
+    const liveAssets = builtinAssetsFor(skinId);
     const choices = field.builtinChoices ?? [];
     const library = state.library;
 
@@ -164,28 +169,30 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
               disabled, title: tr(asset?.labelKey ?? "personalization.builtin.default"),
               "aria-pressed": value === ref,
               onClick: () => onValue(ref),
-              children: jsx("img", { src: asset?.url ?? "", alt: tr(asset?.labelKey ?? key), loading: "lazy" }),
+              children: jsx("img", { src: liveAssets[key]?.url ?? asset?.url ?? "", alt: tr(asset?.labelKey ?? key), loading: "lazy" }),
             }, key);
           }) }),
         ] }) : null,
         jsx("div", { className: "dsh-skins-pz-group", children: [
           jsx("div", { className: "dsh-skins-pz-muted", children: tr("personalization.library") }),
           jsx("div", { className: "dsh-skins-pz-thumbs", children: [
-            ...library.slice(0, PAGE_SIZE).map((asset) => jsx("button", {
+            ...library.slice(0, visible).map((asset) => jsx("button", {
               type: "button", className: `dsh-skins-pz-thumb${value === asset.id ? " on" : ""}`,
               disabled, title: asset.displayName,
               "aria-pressed": value === asset.id,
               onClick: () => onValue(asset.id),
               children: jsx("img", { src: configClient.assetUrl(asset), alt: asset.displayName, loading: "lazy" }),
             }, asset.id)),
-            library.length > PAGE_SIZE ? jsx("span", {
-              className: "dsh-skins-pz-muted",
-              children: tr("personalization.library.more", { count: library.length - PAGE_SIZE }),
+            library.length > visible ? jsx("button", {
+              type: "button", className: "dsh-skins-pz-btn",
+              onClick: () => setVisible(visible + PAGE_SIZE),
+              children: tr("personalization.library.more", { count: library.length - visible }),
             }) : null,
             library.length === 0 ? jsx("span", {
               className: "dsh-skins-pz-muted", children: tr("personalization.library.empty"),
             }) : null,
           ] }),
+          uploadMessage === null ? null : jsx("div", { className: "dsh-skins-pz-status dsh-skins-pz-muted", children: uploadMessage }),
           jsx("button", {
             type: "button", className: "dsh-skins-pz-btn", disabled,
             onClick: () => uploadRef.current?.click(),
@@ -197,8 +204,14 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
             onChange: async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
+              setUploadMessage(tr("personalization.theme.working"));
               const result = await configClient.uploadImage(file);
-              if (result.asset) onValue(result.asset.id);
+              if (result.asset) {
+                setUploadMessage(null);
+                onValue(result.asset.id);
+              } else {
+                setUploadMessage(tr("personalization.library.deleteFailed"));
+              }
               event.target.value = "";
             },
           }),
@@ -211,11 +224,12 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
 
   function Gallery({ state, disabled }) {
     const [message, setMessage] = useState(null);
+    const [visible, setVisible] = useState(PAGE_SIZE);
     return jsx("div", { className: "dsh-skins-pz-gallery", children: [
       jsx("div", { className: "dsh-skins-pop-divider", "aria-hidden": "true" }),
       jsx("div", { className: "dsh-skins-pz-muted", children: tr("personalization.library.manage") }),
       message === null ? null : jsx("div", { className: "dsh-skins-pz-status", children: message }),
-      ...state.library.slice(0, PAGE_SIZE).map((asset) => {
+      ...state.library.slice(0, visible).map((asset) => {
         const references = state.references[asset.id] ?? [];
         return jsx("div", { key: asset.id, className: "dsh-skins-pz-asset", children: [
           jsx("img", { src: configClient.assetUrl(asset), alt: asset.displayName, loading: "lazy" }),
@@ -242,6 +256,11 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
       }),
       state.library.length === 0 ? jsx("div", {
         className: "dsh-skins-pz-muted", children: tr("personalization.library.empty"),
+      }) : null,
+      state.library.length > visible ? jsx("button", {
+        type: "button", className: "dsh-skins-pz-btn",
+        onClick: () => setVisible(visible + PAGE_SIZE),
+        children: tr("personalization.library.more", { count: state.library.length - visible }),
       }) : null,
     ] });
   }
@@ -284,18 +303,32 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
       setPendingImport({ ...result.prepare, purge: false });
     };
 
+    const backToList = () => {
+      setPersonalizeId(null);
+      try {
+        document.getElementById(`${skinId}-gear`)?.focus?.();
+      } catch {}
+    };
+
     const confirmImport = async () => {
       const { importToken, baseRevision, purge } = pendingImport;
       setThemeMessage(tr("personalization.theme.working"));
       const result = await configClient.commitThemeImport({
         importToken, baseRevision, confirm: true, purgeUnknown: purge === true,
       });
-      setPendingImport(null);
       if (result.error === "IMPORT_CONFLICT" || result.error === "IMPORT_EXPIRED") {
+        setPendingImport(null); // a fresh preview is required
         setThemeMessage(tr("personalization.theme.conflict"));
         return;
       }
-      setThemeMessage(result.error ? tr("personalization.theme.failed") : tr("personalization.theme.done"));
+      if (result.error) {
+        // Keep the preview: the backend commit is idempotent per token, so a
+        // plain retry after a transient failure is safe.
+        setThemeMessage(tr("personalization.theme.failed"));
+        return;
+      }
+      setPendingImport(null);
+      setThemeMessage(tr("personalization.theme.done"));
     };
 
     if (schema === null) return null;
@@ -323,7 +356,7 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     return jsx("div", { className: "dsh-skins-pz", children: [
       jsx("div", { className: "dsh-skins-pz-head", children: [
         jsx("button", {
-          type: "button", className: "dsh-skins-pz-btn", onClick: onBack,
+          type: "button", className: "dsh-skins-pz-btn", onClick: backToList,
           children: tr("personalization.back"),
         }),
         jsx("div", {

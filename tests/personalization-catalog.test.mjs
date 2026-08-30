@@ -173,3 +173,14 @@ test("pixel budgets stay coherent with the design contract", () => {
   assert.equal(GLOBAL_MAX_PIXELS, 40_000_000);
   assert.equal(GIF_MAX_PIXELS, 12_000_000);
 });
+
+test("range values must sit on the declared step grid", () => {
+  assert.equal(validateOverride("tgcf", "blur", 5).ok, true);
+  assert.deepEqual(validateOverride("tgcf", "blur", 5.5), { ok: false, code: "BAD_VALUE" });
+  assert.equal(validateOverride("tgcf", "scrim", { light: 18.5, dark: 42 }).ok, false);
+});
+
+test("scope objects must carry exactly their canonical keys", () => {
+  assert.deepEqual(validateOverride("tgcf", "slogan", { zh: "一", en: "One", fr: "Un" }), { ok: false, code: "BAD_SHAPE" });
+  assert.deepEqual(validateOverride("tgcf", "accent", { light: "#C3272B", dark: "#E0564A", extra: 1 }), { ok: false, code: "BAD_SHAPE" });
+});

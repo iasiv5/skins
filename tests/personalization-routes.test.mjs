@@ -276,3 +276,33 @@ test("readonly stores surface STORE_READONLY as 409", async () => {
   assert.equal(response.state.status, 409);
   assert.equal(JSON.parse(response.state.body).code, "STORE_READONLY");
 });
+
+// ---- trust fence hardening + codec error mapping (review round) -----------
+
+test("a spoofed loopback Host from a non-loopback socket is rejected", async () => {
+  const { call } = makeHarness();
+  const spoofed = await call({
+    ...makeRequest({ url: "/dsh-skins/config", headers: { ...TRUSTED } }),
+    socket: { remoteAddress: "192.168.1.50" },
+  });
+  assert.equal(spoofed.status, 403);
+  const genuine = await call({
+    ...makeRequest({ url: "/dsh-skins/config", headers: { ...TRUSTED } }),
+    socket: { remoteAddress: "127.0.0.1" },
+  });
+  assert.equal(genuine.status, 200);
+});
+
+test("malformed JSON bodies map to INVALID_CONFIG 400, not 500", async () => {
+  const { call } = makeHarness();
+  const chunks = [Buffer.from("{not json")];
+  const request = {
+    method: "PATCH",
+    url: "/dsh-skins/config",
+    headers: { ...TRUSTED, "content-type": "application/json" },
+    async *[Symbol.asyncIterator]() { yield* chunks; },
+  };
+  const state = await call(request);
+  assert.equal(state.status, 400);
+  assert.equal(JSON.parse(state.body).code, "INVALID_CONFIG");
+});

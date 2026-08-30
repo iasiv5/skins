@@ -25,8 +25,11 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import {
+  closeSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -51,6 +54,7 @@ import {
   getField,
   getSkinSchema,
   listAssetFields,
+  metaSatisfiesField,
   resolveImageRef,
   validateOverride,
 } from "../../shared/personalization/catalog.js";
@@ -63,6 +67,7 @@ const STAGING_TTL_MS = 24 * 60 * 60 * 1000;
 const DISK_SAFETY_RESERVE = 64 * 1024 * 1024;
 const CORRUPT_BACKUP_LIMIT = 3;
 const IMPORT_TTL_MS = 10 * 60 * 1000;
+const ID_ATTEMPTS = 5;
 
 function defaultFs() {
   return {
@@ -76,6 +81,9 @@ function defaultFs() {
     rmdirSync,
     statSync,
     statfsSync,
+    copyFileSync,
+    openSync,
+    closeSync,
   };
 }
 
@@ -98,6 +106,48 @@ function isValidStateShape(state) {
   if (!Number.isInteger(state.revision) || state.revision < 0) return false;
   if (typeof state.skins !== "object" || state.skins === null || Array.isArray(state.skins)) return false;
   if (typeof state.library !== "object" || state.library === null || Array.isArray(state.library)) return false;
+  // Crash-safe recovery marker (two-phase recovery): present between the
+  // rebuilt-state commit and the quarantine move (see finishRecoveryCleanup).
+  if (state.recoveryCleanup !== undefined) {
+    const pending = state.recoveryCleanup;
+    if (pending === null || typeof pending !== "object" || Array.isArray(pending)
+      || !Array.isArray(pending.quarantine)
+      || !pending.quarantine.every((name) => typeof name === "string")) return false;
+  }
+  return true;
+}
+
+const ASSET_EXTENSIONS = new Set(["png", "jpg", "webp", "gif"]);
+
+/**
+ * Deep validation: a state counts as "normal" only when every library entry
+ * is a coherent AssetMeta keyed by its own id. Semantically corrupt states
+ * fall into recovery — the GC must never consume unvalidated state.
+ */
+function isValidAssetMeta(meta, id) {
+  if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return false;
+  if (typeof meta.id !== "string" || meta.id !== id || !ASSET_ID_PATTERN.test(id)) return false;
+  if (typeof meta.displayName !== "string") return false;
+  if (typeof meta.mime !== "string" || !/^(image\/(png|jpeg|webp|gif))$/.test(meta.mime)) return false;
+  if (typeof meta.extension !== "string" || !ASSET_EXTENSIONS.has(meta.extension)) return false;
+  if (meta.extension !== extensionForMime(meta.mime)) return false;
+  if (!Number.isInteger(meta.byteLength) || meta.byteLength <= 0 || meta.byteLength > GLOBAL_MAX_BYTES) return false;
+  if (!Number.isInteger(meta.width) || meta.width <= 0) return false;
+  if (!Number.isInteger(meta.height) || meta.height <= 0) return false;
+  const pixelCap = meta.mime === "image/gif" ? GIF_MAX_PIXELS : GLOBAL_MAX_PIXELS;
+  if (meta.width * meta.height > pixelCap) return false;
+  if (typeof meta.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(meta.sha256)) return false;
+  return typeof meta.createdAt === "string";
+}
+
+function isValidStateDeep(state) {
+  if (!isValidStateShape(state)) return false;
+  for (const [id, meta] of Object.entries(state.library)) {
+    if (!isValidAssetMeta(meta, id)) return false;
+  }
+  for (const section of Object.values(state.skins)) {
+    if (section === null || typeof section !== "object" || Array.isArray(section)) return false;
+  }
   return true;
 }
 
@@ -180,6 +230,10 @@ export function createPersonalizationStore(options = {}) {
     const id = name.split(".")[0];
     if (!ASSET_ID_PATTERN.test(id)) return { name, kind: "unrecognized" };
     const extension = extensionForMime(meta.mime);
+    // An extension that contradicts the sniffed magic bytes would register an
+    // asset that can never be served (serveAsset rebuilds paths from the
+    // trusted extension) — quarantine instead of resurrecting it.
+    if (name !== `${id}.${extension}`) return { name, kind: "unrecognized" };
     return {
       name,
       kind: "asset",
@@ -192,7 +246,7 @@ export function createPersonalizationStore(options = {}) {
         width: meta.width,
         height: meta.height,
         sha256: sha256Hex(buffer),
-        createdAt: now(),
+        createdAt: new Date(now()).toISOString(),
       },
     };
   }
@@ -212,8 +266,16 @@ export function createPersonalizationStore(options = {}) {
 
   function initOnce() {
     initialized = true;
-    ensureDirs();
+    // Boot is read-only first: parse the JSON and inspect configVersion
+    // BEFORE creating directories or deep-validating — a future-version state
+    // must leave the data directory byte-identical (design §5.3 B).
     const read = readStateFile();
+    if (read.kind === "ok" && read.state.configVersion > CONFIG_VERSION) {
+      mode = "unsupported";
+      state = read.state;
+      return; // no ensureDirs, no validation, no GC, no staging cleanup
+    }
+    ensureDirs();
     const assetFiles = listAssetFiles();
 
     if (read.kind === "missing" && assetFiles.length === 0) {
@@ -224,7 +286,7 @@ export function createPersonalizationStore(options = {}) {
       return;
     }
 
-    if (read.kind === "missing" || read.kind === "corrupt") {
+    if (read.kind === "missing" || read.kind === "corrupt" || !isValidStateDeep(read.state)) {
       // Recovery branch A: rebuild a candidate from blobs; nothing destructive.
       const candidateLibrary = {};
       const quarantine = [];
@@ -238,22 +300,20 @@ export function createPersonalizationStore(options = {}) {
       return;
     }
 
-    if (read.state.configVersion > CONFIG_VERSION) {
-      // Branch B: strict zero writes — no rebuild, no GC, no staging cleanup.
-      mode = "unsupported";
-      state = read.state;
-      return;
-    }
-
     mode = "normal";
     state = read.state;
+    if (state.recoveryCleanup !== undefined) {
+      // A previous recovery committed its state but crashed before the
+      // quarantine move — resume it (idempotent), then GC.
+      finishRecoveryCleanup();
+    }
     gcNow();
   }
 
   // -- garbage collection ---------------------------------------------------
 
   function gcNow() {
-    if (mode !== "normal") return;
+    if (mode !== "normal" || state?.recoveryCleanup !== undefined) return;
     const live = new Set(Object.keys(state.library));
     for (const name of listAssetFiles()) {
       const id = name.split(".")[0];
@@ -397,14 +457,42 @@ export function createPersonalizationStore(options = {}) {
     if (typeof fs.statfsSync !== "function") return;
     try {
       const stats = fs.statfsSync(dataDir);
-      const required = incomingBytes * 2 + DISK_SAFETY_RESERVE;
-      if (BigInt(stats.bsize) * BigInt(stats.bavail) < BigInt(required)) {
+      // incoming + 2× temporary overhead + safety reserve (design §4).
+      const required = BigInt(incomingBytes) * 3n + BigInt(DISK_SAFETY_RESERVE);
+      if (BigInt(stats.bsize) * BigInt(stats.bavail) < required) {
         throw codedError("DISK_FULL", "磁盘剩余空间不足，拒绝写入");
       }
     } catch (error) {
       if (error?.code === "DISK_FULL") throw error;
       // statfs unavailable on this platform — proceed without the check.
     }
+  }
+
+  /**
+   * Exclusive, no-overwrite blob commit (design: immutable blobs). Uses
+   * open(2) with "wx" so a colliding id fails with EEXIST instead of being
+   * replaced by rename(2); a crash mid-write leaves a partial file that is
+   * not referenced by any state — the GC (or recovery sniff) reclaims it.
+   */
+  function writeBlobExclusive(buffer, extension) {
+    for (let attempt = 0; attempt < ID_ATTEMPTS; attempt += 1) {
+      const id = ASSET_ID_PREFIX + randomUUID().replaceAll("-", "");
+      const target = blobFileFor(id, extension);
+      let descriptor;
+      try {
+        descriptor = fs.openSync(target, "wx");
+      } catch (error) {
+        if (error?.code === "EEXIST") continue; // collision: try a new id
+        throw error;
+      }
+      try {
+        fs.writeFileSync(descriptor, buffer);
+        return { id, target };
+      } finally {
+        try { fs.closeSync(descriptor); } catch {}
+      }
+    }
+    throw codedError("STORE_WRITE_FAILED", "无法分配新的资产 id（连续碰撞）");
   }
 
   async function uploadAsset(buffer, { displayName, declaredMime }) {
@@ -417,25 +505,7 @@ export function createPersonalizationStore(options = {}) {
     return enqueue(() => {
       checkDiskSpace(buffer.length);
       const extension = extensionForMime(meta.mime);
-      let id = "";
-      let target;
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        id = ASSET_ID_PREFIX + randomUUID().replaceAll("-", "");
-        target = blobFileFor(id, extension);
-        if (!fs.existsSync(target)) break;
-      }
-      const stagingPath = join(stagingDir, randomUUID());
-      fs.mkdirSync(stagingPath, { recursive: true });
-      const stagingFile = join(stagingPath, "blob");
-      try {
-        fs.writeFileSync(stagingFile, buffer);
-        fs.renameSync(stagingFile, target);
-      } catch (error) {
-        try { fs.unlinkSync(stagingFile); } catch {}
-        try { fs.rmdirSync(stagingPath); } catch {}
-        throw error;
-      }
-      try { fs.rmdirSync(stagingPath); } catch {}
+      const { id, target } = writeBlobExclusive(buffer, extension);
 
       const asset = {
         id,
@@ -526,6 +596,7 @@ export function createPersonalizationStore(options = {}) {
     const fields = {};
     const entries = [{ name: "manifest.json", data: null }];
     const listed = [];
+    const seenFiles = new Set(); // one asset may back several fields (Y3)
     for (const field of schema.fields) {
       const value = section[field.key];
       if (value === undefined) continue;
@@ -540,6 +611,8 @@ export function createPersonalizationStore(options = {}) {
         if (meta === undefined) continue; // dangling reference: skip on export
         const file = `assets/${meta.id}.${meta.extension}`;
         fields[field.key] = { $asset: file };
+        if (seenFiles.has(file)) continue; // dedupe ZIP entries and listings
+        seenFiles.add(file);
         const data = fs.readFileSync(blobFileFor(meta.id, meta.extension));
         entries.push({ name: file, data });
         listed.push({ file, sha256: sha256Hex(data) });
@@ -562,8 +635,10 @@ export function createPersonalizationStore(options = {}) {
   }
 
   function pruneExpiredImports() {
+    // Committed results are kept only until their TTL for retry idempotency;
+    // after that the (slim) entry goes too — no unbounded retention.
     for (const [token, entry] of imports) {
-      if (entry.status !== "committed" && entry.expiresAt < now()) imports.delete(token);
+      if (entry.expiresAt < now()) imports.delete(token);
     }
   }
 
@@ -602,8 +677,23 @@ export function createPersonalizationStore(options = {}) {
       if (!listedFiles.has(name)) throw codedError("IMPORT_INVALID", `${name} 未在 manifest 中登记`);
     }
 
-    // Field values: markers must point at listed assets; plain image strings
-    // must be builtin refs; other values validate without library metadata.
+    // Prepare-time ingest validation (design §6: prepare AND commit both
+    // re-validate): sniff every asset through the shared uploader rules so
+    // illegal packages fail at preview instead of after the user confirms.
+    const preparedMeta = new Map(); // file → sniffed {mime, width, height, byteLength}
+    for (const file of listedFiles) {
+      const sniffed = ingestAssetMeta(assets.get(file));
+      preparedMeta.set(file, {
+        mime: sniffed.mime,
+        width: sniffed.width,
+        height: sniffed.height,
+        byteLength: assets.get(file).length,
+      });
+    }
+
+    // Field values: markers must point at listed assets AND satisfy the
+    // field-level constraints at prepare time; plain image strings must be
+    // builtin refs; other values validate without library metadata.
     const mappedFields = {};
     for (const [key, value] of Object.entries(manifest.fields)) {
       const field = getField(manifest.skinId, key);
@@ -612,6 +702,9 @@ export function createPersonalizationStore(options = {}) {
         const file = value.$asset;
         if (typeof file !== "string" || !listedFiles.has(file)) {
           throw codedError("IMPORT_INVALID", `${key} 引用了未登记的资产`);
+        }
+        if (!metaSatisfiesField(field, preparedMeta.get(file))) {
+          throw codedError("IMPORT_INVALID", `${key} 的图片不满足该字段约束（格式/大小/尺寸）`);
         }
         mappedFields[key] = { $asset: file };
         continue;
@@ -653,27 +746,32 @@ export function createPersonalizationStore(options = {}) {
   async function commitImport({ importToken, baseRevision, confirm, purgeUnknown }) {
     init();
     requireNormal("主题导入");
-    const entry = imports.get(importToken);
-    if (entry === undefined || entry.expiresAt < now()) {
-      imports.delete(importToken);
-      throw codedError("IMPORT_EXPIRED", "导入会话不存在或已过期");
-    }
-    if (entry.status === "committed") {
-      // Network-retry idempotency: same token + same params → same result.
-      if (entry.resultParams === JSON.stringify({ baseRevision, confirm, purgeUnknown })) {
-        return Promise.resolve(entry.result);
-      }
-      throw codedError("IMPORT_CONFLICT", "导入已提交，参数不一致");
-    }
-    if (confirm !== true) throw codedError("INVALID_CONFIG", "commit 需要 confirm:true");
-    if (typeof baseRevision !== "number" || baseRevision !== state.revision) {
-      throw codedError("IMPORT_CONFLICT", "配置已变化，请重新预览");
-    }
+    // Token state, params and revision are ALL validated inside the
+    // serialized queue: concurrent commits of the same token collapse to a
+    // single state change, and a moved revision 409s for the loser.
     return enqueue(() => {
+      const entry = imports.get(importToken);
+      if (entry === undefined || entry.expiresAt < now()) {
+        imports.delete(importToken);
+        throw codedError("IMPORT_EXPIRED", "导入会话不存在或已过期");
+      }
+      if (entry.status === "committed") {
+        // Network-retry idempotency: same token + same params → same result.
+        if (entry.resultParams === JSON.stringify({ baseRevision, confirm, purgeUnknown })) {
+          return entry.result;
+        }
+        throw codedError("IMPORT_CONFLICT", "导入已提交，参数不一致");
+      }
+      if (confirm !== true) throw codedError("INVALID_CONFIG", "commit 需要 confirm:true");
+      if (typeof baseRevision !== "number" || baseRevision !== state.revision) {
+        throw codedError("IMPORT_CONFLICT", "配置已变化，请重新预览");
+      }
+
       const skinId = entry.manifest.skinId;
       const schema = getSkinSchema(skinId);
       const newBlobs = [];
       const mapping = {};
+      let committed = false;
       try {
         const draft = structuredClone(state);
         // Re-id assets through the shared ingest validation; hash dedup
@@ -688,25 +786,7 @@ export function createPersonalizationStore(options = {}) {
           }
           checkDiskSpace(buffer.length);
           const extension = extensionForMime(meta.mime);
-          let id = "";
-          let target;
-          for (let attempt = 0; attempt < 5; attempt += 1) {
-            id = ASSET_ID_PREFIX + randomUUID().replaceAll("-", "");
-            target = blobFileFor(id, extension);
-            if (!fs.existsSync(target)) break;
-          }
-          const stagingPath = join(stagingDir, randomUUID());
-          fs.mkdirSync(stagingPath, { recursive: true });
-          const stagingFile = join(stagingPath, "blob");
-          try {
-            fs.writeFileSync(stagingFile, buffer);
-            fs.renameSync(stagingFile, target);
-          } catch (error) {
-            try { fs.unlinkSync(stagingFile); } catch {}
-            try { fs.rmdirSync(stagingPath); } catch {}
-            throw error;
-          }
-          try { fs.rmdirSync(stagingPath); } catch {}
+          const { id, target } = writeBlobExclusive(buffer, extension);
           newBlobs.push(target);
           draft.library[id] = {
             id,
@@ -747,17 +827,32 @@ export function createPersonalizationStore(options = {}) {
         draft.skins[skinId] = section;
         draft.revision += 1;
         commitState(draft);
+        committed = true;
+
         const result = { revision: draft.revision, skinConfig: section, assetMapping: mapping };
         entry.status = "committed";
         entry.result = result;
         entry.resultParams = JSON.stringify({ baseRevision, confirm, purgeUnknown });
-        gcNow();
+        // Slim the token: archive buffers are no longer needed and must not
+        // stay resident for the token's remaining TTL.
+        entry.manifest = null;
+        entry.assets = null;
+        entry.mappedFields = null;
         return result;
       } catch (error) {
-        for (const blob of newBlobs) {
-          try { fs.unlinkSync(blob); } catch {}
+        // Only reclaim blobs that the committed state does NOT reference.
+        if (!committed) {
+          for (const blob of newBlobs) {
+            try { fs.unlinkSync(blob); } catch {}
+          }
         }
         throw error;
+      } finally {
+        // Post-commit GC is best-effort housekeeping: a GC failure must never
+        // delete blobs the freshly committed state references.
+        if (committed) {
+          try { gcNow(); } catch {}
+        }
       }
     });
   }
@@ -770,29 +865,49 @@ export function createPersonalizationStore(options = {}) {
     init();
     if (mode !== "recovery") throw codedError("STORE_NOT_RECOVERING", "当前不在恢复模式");
     return enqueue(() => {
-      // Keep ≤3 corrupt backups, then archive the unreadable state file.
-      const backup = `${stateFile}.corrupt.${now()}.json`;
+      // Two-phase recovery (design §5.3 A): NOTHING moves before the rebuilt
+      // state is atomically committed, and the commit carries a persisted
+      // cleanup marker so a crash mid-cleanup resumes on the next boot.
       try {
-        if (fs.existsSync(stateFile)) fs.renameSync(stateFile, backup);
-        pruneCorruptBackups();
-      } catch {} // missing file (deleted externally) — nothing to back up
-
-      // Physically move unrecognized files into quarantine/ — only now, after
-      // the user confirmed (design §5.3 A.3).
-      fs.mkdirSync(quarantineDir, { recursive: true });
-      for (const name of recovery.quarantine) {
-        try { fs.renameSync(join(assetsDir, name), join(quarantineDir, name)); } catch {}
-      }
+        // Archive a COPY (non-destructive) of the unreadable state file.
+        if (fs.existsSync(stateFile) && typeof fs.copyFileSync === "function") {
+          try {
+            fs.copyFileSync(stateFile, `${stateFile}.corrupt.${now()}.json`);
+            pruneCorruptBackups();
+          } catch {} // archiving is best-effort
+        }
+      } catch {}
 
       const draft = emptyState();
       draft.library = recovery.candidateLibrary;
       draft.revision = 1;
-      commitState(draft);
+      draft.recoveryCleanup = { quarantine: [...recovery.quarantine] };
+      commitState(draft); // the single atomic commit point
+
+      finishRecoveryCleanup(); // phase 2 — idempotent, crash-resumable
       mode = "normal";
       recovery = null;
       gcNow();
       return { revision: draft.revision };
     });
+  }
+
+  /**
+   * Finish (or resume) the recovery cleanup: physically move quarantined
+   * files, then commit the marker-free state that re-enables GC. Running
+   * under a committed state with `recoveryCleanup` present — GC stays off
+   * until this completes, so a crash anywhere in here is safe to retry.
+   */
+  function finishRecoveryCleanup() {
+    const pending = state.recoveryCleanup;
+    if (pending === undefined) return;
+    fs.mkdirSync(quarantineDir, { recursive: true });
+    for (const name of pending.quarantine) {
+      try { fs.renameSync(join(assetsDir, name), join(quarantineDir, name)); } catch {}
+    }
+    const cleaned = structuredClone(state);
+    delete cleaned.recoveryCleanup;
+    commitState(cleaned);
   }
 
   function pruneCorruptBackups() {

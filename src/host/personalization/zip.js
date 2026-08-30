@@ -168,6 +168,7 @@ export function readStoreOnlyZip(buffer) {
   const assets = new Map();
   let manifest = null;
   let cursor = centralOffset;
+  const localRecords = []; // [start, end) spans for structural coverage
   for (let index = 0; index < countTotal; index += 1) {
     if (cursor + 46 > eocdOffset || buffer.readUInt32LE(cursor) !== CENTRAL) {
       throw codedError("IMPORT_INVALID", "central directory truncated or misaligned");
@@ -183,7 +184,9 @@ export function readStoreOnlyZip(buffer) {
     const commentLength = buffer.readUInt16LE(cursor + 32);
     const localOffset = buffer.readUInt32LE(cursor + 42);
     if (cursor + 46 + nameLength > eocdOffset) throw codedError("IMPORT_INVALID", "central entry name truncated");
-    const name = buffer.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
+    if (buffer.readUInt16LE(cursor + 34) !== 0) throw codedError("IMPORT_INVALID", "central disk-number-start must be 0");
+    const centralNameBytes = buffer.subarray(cursor + 46, cursor + 46 + nameLength);
+    const name = centralNameBytes.toString("utf8");
     cursor += 46 + nameLength + extraLength + commentLength;
 
     if (versionNeeded !== 20) throw codedError("IMPORT_INVALID", `${name}: unsupported version ${versionNeeded}`);
@@ -205,16 +208,26 @@ export function readStoreOnlyZip(buffer) {
       throw codedError("IMPORT_INVALID", `${name}: duplicate entry`);
     }
 
-    // Local header consistency, then the data region.
+    // Local header consistency — compared FIELD BY FIELD against the
+    // central record (parser differentials are structural failures).
     if (localOffset + 30 > eocdOffset || buffer.readUInt32LE(localOffset) !== LOCAL) {
       throw codedError("IMPORT_INVALID", `${name}: local header missing`);
     }
     const localNameLength = buffer.readUInt16LE(localOffset + 26);
     const localExtraLength = buffer.readUInt16LE(localOffset + 28);
-    if (localNameLength !== nameLength) throw codedError("IMPORT_INVALID", `${name}: local/central name mismatch`);
+    if (localNameLength !== nameLength
+      || !buffer.subarray(localOffset + 30, localOffset + 30 + localNameLength).equals(centralNameBytes)) {
+      throw codedError("IMPORT_INVALID", `${name}: local/central name mismatch`);
+    }
     if (localExtraLength !== 0) throw codedError("IMPORT_INVALID", `${name}: local extra fields rejected`);
+    if (buffer.readUInt16LE(localOffset + 4) !== 20) throw codedError("IMPORT_INVALID", `${name}: local/central version mismatch`);
     if (buffer.readUInt16LE(localOffset + 6) !== 0 || buffer.readUInt16LE(localOffset + 8) !== 0) {
       throw codedError("IMPORT_INVALID", `${name}: local flags/method differ from store-only`);
+    }
+    if (buffer.readUInt32LE(localOffset + 14) !== crc
+      || buffer.readUInt32LE(localOffset + 18) !== compressedSize
+      || buffer.readUInt32LE(localOffset + 22) !== uncompressedSize) {
+      throw codedError("IMPORT_INVALID", `${name}: local/central CRC or size mismatch`);
     }
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     const dataEnd = dataStart + uncompressedSize;
@@ -228,11 +241,25 @@ export function readStoreOnlyZip(buffer) {
       if (dataStart < end && start < dataEnd) throw codedError("IMPORT_INVALID", `${name}: overlapping entry data`);
     }
     ranges.push([dataStart, dataEnd]);
+    localRecords.push([localOffset, dataEnd]);
 
     if (name === "manifest.json") manifest = Buffer.from(data);
     else assets.set(name, Buffer.from(data));
   }
   if (cursor !== eocdOffset) throw codedError("IMPORT_INVALID", "central directory size mismatch");
+  // Structural coverage: the local records must tile [0, centralOffset)
+  // exactly — no gaps, no stray payloads between entries.
+  localRecords.sort((a, b) => a[0] - b[0]);
+  let coverageCursor = 0;
+  for (const [start, end] of localRecords) {
+    if (start !== coverageCursor) {
+      throw codedError("IMPORT_INVALID", "archive structure has gaps or unclaimed payload between entries");
+    }
+    coverageCursor = end;
+  }
+  if (coverageCursor !== centralOffset) {
+    throw codedError("IMPORT_INVALID", "archive structure has gaps or unclaimed payload before the central directory");
+  }
   if (manifest === null) throw codedError("IMPORT_INVALID", "manifest.json missing");
   return { manifest, assets };
 }

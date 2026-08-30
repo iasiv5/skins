@@ -162,7 +162,13 @@ export function createSkinRuntime() {
     return `${selector}{${light.join(";")}}\n${darkSelector}{${dark.join(";")}}`;
   }
 
-  function mountEffects(skin, effects) {
+  /**
+   * Build a skin's effects WITHOUT touching the mounted state. Every side
+   * effect registers its rollback BEFORE mutating (R7): a mid-build crash
+   * unwinds itself completely and the previously mounted skin keeps running.
+   * Returns the unwind function; throws only after self-cleanup.
+   */
+  function buildEffects(skin, effects) {
     if (!ctx) throw new Error("[dsh-skins] mount before apply");
     const body = document.body;
     const stops = [];
@@ -238,21 +244,26 @@ export function createSkinRuntime() {
         stops.push(disposeTokens);
       }
 
+      // Body scope attribute: register the rollback BEFORE setting it.
       const hadAttribute = body.dataset[effects.bodyAttribute] !== undefined;
+      stops.push(() => {
+        if (!hadAttribute) delete body.dataset[effects.bodyAttribute];
+      });
       body.dataset[effects.bodyAttribute] = "";
 
       if (effects.favicon !== null) {
         const removedIcons = [...document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]')];
+        let favicon = null;
+        stops.push(() => {
+          if (favicon !== null) favicon.remove();
+          for (const element of removedIcons) document.head.append(element);
+        });
         removedIcons.forEach((element) => element.remove());
-        const favicon = document.createElement("link");
+        favicon = document.createElement("link");
         favicon.rel = "icon";
         favicon.type = effects.favicon.mime;
         favicon.href = effects.favicon.href;
         document.head.append(favicon);
-        stops.push(() => {
-          favicon.remove();
-          for (const element of removedIcons) document.head.append(element);
-        });
       }
 
       // Browser chrome identity, cooperatively: rebrand only the product
@@ -261,6 +272,15 @@ export function createSkinRuntime() {
       const officialBrand = "DeepSeek Harness";
       const brand = effects.titleBrand === null || effects.titleBrand === "" ? null : effects.titleBrand;
       let titleObserver = null;
+      stops.push(() => {
+        if (titleObserver !== null) {
+          titleObserver.disconnect();
+          if (document.title === brand) document.title = officialBrand;
+          else if (brand !== null && document.title.endsWith(" — " + brand)) {
+            document.title = document.title.slice(0, document.title.length - brand.length) + officialBrand;
+          }
+        }
+      });
       if (brand !== null) {
         const withBrand = (text) => {
           if (text === officialBrand) return brand;
@@ -275,25 +295,11 @@ export function createSkinRuntime() {
         titleObserver = new MutationObserver(rebrand);
         titleObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
       }
-
-      stops.push(() => {
-        if (!hadAttribute) delete body.dataset[effects.bodyAttribute];
-        if (titleObserver !== null) {
-          titleObserver.disconnect();
-          if (document.title === brand) document.title = officialBrand;
-          else if (brand !== null && document.title.endsWith(" — " + brand)) {
-            document.title = document.title.slice(0, document.title.length - brand.length) + officialBrand;
-          }
-        }
-      });
     } catch (error) {
       unwind();
       throw error;
     }
-
-    mounted = { skin, effects, stop: unwind };
-    selectedId = skin.id;
-    announce(skin.id);
+    return unwind;
   }
 
   function unmount() {
@@ -302,47 +308,51 @@ export function createSkinRuntime() {
     mounted = null;
   }
 
-  /** Project + mount a skin; false = fail-closed (design §3 layer 3). */
+  /** Swap in a fully built effect set; the old one is disposed only now. */
+  function commitMount(skin, effects, stop) {
+    unmount();
+    mounted = { skin, effects, stop };
+    selectedId = skin.id;
+    announce(skin.id);
+  }
+
+  /**
+   * Project + build + swap. Build failures leave the PREVIOUS skin mounted
+   * (nothing was unmounted yet); returns false = fail-closed (design §3).
+   */
   function mountSkin(skin) {
     const result = projectSkin(skin, overridesFor(skin.id), projectionContext());
     if (result.effects === null) {
-      console.warn(`[dsh-skins] skin "${skin.id}" failed to project; keeping the official appearance`);
+      console.warn(`[dsh-skins] skin "${skin.id}" failed to project; keeping the previous appearance`);
       return false;
     }
     if (result.degraded !== "none") {
       console.warn(`[dsh-skins] skin "${skin.id}" projected with degraded defaults (${result.degraded})`);
     }
-    mountEffects(skin, result.effects);
+    const stop = buildEffects(skin, result.effects); // self-unwinding on throw
+    commitMount(skin, result.effects, stop);
     return true;
   }
 
   /**
-   * Hot-update the active skin's effects after a config change. A failed
-   * projection keeps the current effects; a failed replacement restores the
-   * previous known-good set (design §7.1).
+   * Hot-update the active skin's effects after a config change. The new set
+   * is fully built BEFORE the old one is disposed, so any failure keeps the
+   * current known-good effects running (design §7.1).
    */
   function updateActive() {
     if (mounted === null) return { applied: false, reason: "none" };
     const skin = mounted.skin;
-    const previousEffects = mounted.effects;
     const result = projectSkin(skin, overridesFor(skin.id), projectionContext());
     if (result.effects === null) {
       console.warn("[dsh-skins] config hot-update failed to project; keeping current effects");
       return { applied: false, reason: "projection-failed" };
     }
-    unmount();
     try {
-      mountEffects(skin, result.effects);
+      const stop = buildEffects(skin, result.effects);
+      commitMount(skin, result.effects, stop);
       return { applied: true, degraded: result.degraded };
     } catch (error) {
-      console.warn("[dsh-skins] effects replacement failed; restoring previous effects", error);
-      try {
-        mountEffects(skin, previousEffects);
-      } catch (restoreError) {
-        console.error("[dsh-skins] effects restore failed; falling back to official", restoreError);
-        selectedId = OFFICIAL_SKIN_ID;
-        announce(OFFICIAL_SKIN_ID);
-      }
+      console.warn("[dsh-skins] effects replacement failed; keeping current effects", error);
       return { applied: false, reason: "mount-failed" };
     }
   }
@@ -353,19 +363,23 @@ export function createSkinRuntime() {
     if (normalizedId !== OFFICIAL_SKIN_ID && !skin) {
       throw new Error(`[dsh-skins] unknown skin "${id}" — available: ${[OFFICIAL_SKIN_ID, ...order].join(", ")}`);
     }
-    try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
     if (selectedId === normalizedId && mounted !== null) return normalizedId;
 
-    unmount();
     if (normalizedId === OFFICIAL_SKIN_ID) {
+      unmount();
       selectedId = OFFICIAL_SKIN_ID;
+      try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
       announce(OFFICIAL_SKIN_ID);
-    } else if (mountSkin(skin)) {
-      // mountEffects set selectedId and announced.
-    } else {
-      selectedId = OFFICIAL_SKIN_ID;
-      announce(OFFICIAL_SKIN_ID);
+      return normalizedId;
     }
+
+    // Build FIRST: a failing projection or build leaves the current skin
+    // mounted and the selection unchanged (R7).
+    if (!mountSkin(skin)) {
+      console.warn(`[dsh-skins] selection of "${normalizedId}" kept the previous appearance`);
+      return normalizedId;
+    }
+    try { localStorage.setItem(SKIN_STORAGE_KEY, normalizedId); } catch {}
     return normalizedId;
   }
 
@@ -382,7 +396,7 @@ export function createSkinRuntime() {
     } else {
       const skin = skins.get(id) ?? skins.get(order[0]);
       if (!skin) throw new Error("[dsh-skins] no skins registered");
-      if (!mountSkin(skin)) selectedId = OFFICIAL_SKIN_ID;
+      if (!mountSkin(skin)) selectedId = OFFICIAL_SKIN_ID; // fail-closed first boot
     }
     return () => {
       unmount();

@@ -51,7 +51,21 @@ export function isTrustedRequest(request, trustedHosts = []) {
   if (host === undefined) return false;
   const hostUrl = parseAuthority(host);
   if (hostUrl === undefined) return false;
-  if (!isLoopbackHostname(hostUrl.hostname) && !isTrustedAuthority(hostUrl, trustedHosts)) return false;
+  const socketAddress = request.socket?.remoteAddress
+    ?? request.info?.remoteAddress;
+  if (isLoopbackHostname(hostUrl.hostname)) {
+    // A loopback Host claim must come from a loopback TCP peer: the Host
+    // header is client-controlled and trivially spoofed when the server
+    // listens on a non-loopback interface. (When no socket info exists —
+    // unit-test harnesses — the header check stands as before.)
+    if (typeof socketAddress === "string") {
+      const loopbackPeer = socketAddress === "127.0.0.1" || socketAddress === "::1"
+        || socketAddress === "::ffff:127.0.0.1";
+      if (!loopbackPeer) return false;
+    }
+  } else if (!isTrustedAuthority(hostUrl, trustedHosts)) {
+    return false;
+  }
   if (header(request.headers, "sec-fetch-site") === "cross-site") return false;
   const origin = header(request.headers, "origin");
   if (origin === undefined) return true;

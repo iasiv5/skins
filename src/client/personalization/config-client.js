@@ -39,6 +39,7 @@ export function createConfigClient(options = {}) {
   let snapshot = { skins: {}, library: [], references: {}, revision: 0, mode: "normal" };
   const previews = new Map(); // `${skinId} ${key}` → value (dirty, unflushed)
   const listeners = new Set();
+  let fetchGeneration = 0;
   let disposed = false;
   let writeChain = Promise.resolve();
   let flushTimer = null;
@@ -84,16 +85,30 @@ export function createConfigClient(options = {}) {
 
   async function refetch() {
     if (disposed) return publicState();
+    // Stale-response guards (design §7.1): only the newest fetch may land,
+    // and a response arriving after a skin switch is dropped.
+    const generation = ++fetchGeneration;
+    const contextAtStart = options.contextActive?.();
     try {
       const response = await request("/config");
-      if (disposed) return publicState();
+      if (disposed || generation !== fetchGeneration) return publicState();
+      if (contextAtStart !== undefined && options.contextActive?.() !== contextAtStart) {
+        return publicState(); // the world moved on — drop the stale snapshot
+      }
       if (response.status === 404 || response.status === 501) {
         // Host older than the client (no personalization routes yet).
         setStatus("offline-failed");
         return publicState();
       }
+      if (!response.ok) {
+        setStatus("offline-failed");
+        return publicState();
+      }
       const body = await response.json();
-      if (disposed) return publicState();
+      if (disposed || generation !== fetchGeneration) return publicState();
+      if (contextAtStart !== undefined && options.contextActive?.() !== contextAtStart) {
+        return publicState();
+      }
       if (body?.mode === "unsupported") {
         snapshot = { ...body, references: {} };
         setStatus("unsupported-readonly");
@@ -136,34 +151,41 @@ export function createConfigClient(options = {}) {
     });
     const count = operations.length;
     writeChain = writeChain.then(async () => {
-      const blocked = gateWrites();
-      if (blocked !== null) return { flushed: 0, blocked };
-      const response = await request("/config", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ baseRevision: snapshot.revision, operations }),
-      });
-      if (disposed) return { flushed: 0 };
-      if (response.status === 409) {
-        const body = await response.json().catch(() => null);
-        if (body?.code === "STORE_READONLY") setStatus("unsupported-readonly");
-        return { flushed: 0, blocked: "conflict" };
-      }
-      if (!response.ok) {
-        // Keep the previews dirty so the panel can retry (design Y6).
+      try {
+        if (disposed) return { flushed: 0, blocked: "disposed" };
+        const blocked = gateWrites();
+        if (blocked !== null) return { flushed: 0, blocked };
+        const response = await request("/config", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ baseRevision: snapshot.revision, operations }),
+        });
+        if (disposed) return { flushed: 0 };
+        if (response.status === 409) {
+          const body = await response.json().catch(() => null);
+          if (body?.code === "STORE_READONLY") setStatus("unsupported-readonly");
+          return { flushed: 0, blocked: "conflict" };
+        }
+        if (!response.ok) {
+          // Keep the previews dirty so the panel can retry (design Y6).
+          return { flushed: 0, blocked: "error" };
+        }
+        const body = await response.json();
+        void body; // drained; the authoritative resync happens in refetch()
+        // Clear only previews the user has not superseded during the flight.
+        for (const [composite, value] of intent) {
+          if (previews.get(composite) === value) previews.delete(composite);
+        }
+        // Resync from the Host rather than trusting a racing local snapshot:
+        // a refetch issued mid-flight may otherwise resurrect pre-write state.
+        await refetch();
+        announce();
+        return { flushed: count };
+      } catch {
+        // The chain itself must stay fulfilled: one network failure may
+        // never poison subsequent flushes (previews stay dirty for retry).
         return { flushed: 0, blocked: "error" };
       }
-      const body = await response.json();
-      void body; // drained; the authoritative resync happens in refetch()
-      // Clear only previews the user has not superseded during the flight.
-      for (const [composite, value] of intent) {
-        if (previews.get(composite) === value) previews.delete(composite);
-      }
-      // Resync from the Host rather than trusting a racing local snapshot:
-      // a refetch issued mid-flight may otherwise resurrect pre-write state.
-      await refetch();
-      announce();
-      return { flushed: count };
     });
     return writeChain;
   }
@@ -347,6 +369,7 @@ export function createConfigClient(options = {}) {
     },
     dispose() {
       disposed = true;
+      fetchGeneration += 1; // invalidate any in-flight response
       if (flushTimer !== null && ownsTimers) clearTimeout(flushTimer);
       try { channel?.close(); } catch {}
       try {
