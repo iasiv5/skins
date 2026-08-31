@@ -208,7 +208,7 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 |---|---|---|---|---|---|
 | wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签二选（v2.4.1 #6：AI 画作取代四个代码纹样） | `builtin:tgcf:crimson` | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
-| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **70（裁决 #14 起）** | f.panelTranslucency | tokenOverrides(bg-base/sidebar-fill, rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14） |
+| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **10（裁决 #15 起）** | f.panelTranslucency | tokenOverrides(bg-base + sidebar-fill 按参考皮肤增量分层，rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14/#15） |
 
 **v2.4 精简注记（Q35）**：favicon/accent/gold/bubbleColor 四字段删除。皮肤视觉身份不随之丢失——tgcf `project()` 将原 catalog 默认值（brand-primary #C3272B/#E0564A、鎏金 #C9A227/#D4AF37、气泡 #C3272B/#8E2A2F、灯笼 favicon）静态烘焙为皮肤常量；SkinEffects 契约（§3/§3a）不变。
 
@@ -334,6 +334,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.5 修订（实测问题 #13：展开时壳高单帧跳变，一级菜单整体上弹）**：#12 修复后仍有“弹掉”——playwright 逐帧采样显示壳高在类翻转帧**单帧**从 493px 跳到 628px（底锚定，一级菜单内容随顶缘整体上跳 135px），而宽度仍是 390px，随后宽度过渡才开跑：跳变与滑行动离成两个节拍，观感即“弹一下再滑出”。根因：壳高是内容驱动的 auto→auto，`transition:height` 永远不插值，展开/收回两个方向都存在单帧跳变（收回只是恰好与宽度滑动同拍而被掩盖）。修复：`sweepShellHeight`（齿轮切换的提交后、绘制前布局 effect）先把壳高**钉在切换前实测值**（`overflow-y:hidden` 压掉过渡期滚动条），强制重排确立过渡起点后释放到目标高度（`min(内容高, maxHeight 钳制)`），内联 transition 同时声明 `width`+`height`（内联 transition 会**整体替换**样式表的 width-only 规则，漏写宽度会让水平方向瞬移），200ms ease-out 与壳宽同拍；`transitionend` + 260ms 兜底释放内联样式，快速连点/中途关壳由 effect cleanup 复位，reduced-motion 与首开壳（无前值）直接跳过。实测：展开 h=493→558.9→628 随 w=739→993→1105 同帧渐进、无单帧跳变；收回到 493/390；中途打断后内联样式清空、终态精确；面板缩略图加 `decoding:async` 降低动画期解码卡顿。
 
 **v2.5 修订（用户裁决 #14：三滑杆合并为「面板通透度」，范围 0–100，默认 70）**：产品主裁决——面板不透明度/背景模糊/遮罩强度合并为**一个字段**，且旧范围 30–100 在低端仍“看不清壁纸”。根因是壁纸之上叠了三层互相独立的视觉：面板底色 α、遮罩纱（亮暖白/暗墨色，Q35 单值）、壁纸 blur，外加 #root 固定 12px 玻璃雾化——只调透明度动不了其余三层。裁决要点：①**删字段不删视觉**（沿 v2.4.1 #5/Q35 先例）：blur/scrim 字段退役，`project()` 由 panelOpacity 经**过原点线性曲线**联动派生三层——`遮罩 α = round(P×30/82)/100`、`壁纸模糊 = round(P×12/82)px`、`#root 玻璃雾化 = 同模糊曲线`（静态 CSS 改为 `var(--dsh-tgcf-glass-blur)`，经 cssVariables 通道注入）；曲线在 **P=82 处精确复刻旧默认**（遮罩 30/模糊 12），存量用户观感零迁移。②**范围 0–100、默认 70**：移除 schema `min:30` 与渲染层 `Math.max(0.3,…)` 双重下限——P=0 即纯壁纸完全可见（三层全零）；P=70 → 遮罩 26/模糊 10。③**存量退役**：1.0.0 未发布、无外部存量数据，旧 blur/scrim 覆写由 §5.5 加载规范化静默剔除，不做迁移；`panelOpacity` 键名不动（存储兼容），labelKey 改 `personalization.panelTranslucency`（zh「面板通透度」/en Panel translucency）。不设新 ADR：发布前无可逆性损失，ADR-0003 的字段枚举就地修订。
+
+**v2.5 修订（用户裁决 #15：默认通透度降至 10%，侧栏与正文分层）**：产品主实测后两项再校准——①出厂默认 70 → **10**：默认状态即“壁纸清晰可读”，想要更实的前提自己拖；曲线本身不动（P=82 校准点保留，历史观感仍可复现）。②**侧栏与正文区分离**：照搬 openbmc/uefi 两块参考皮肤的既有模式——`--dsh-specific-sidebar-fill` 在 `--dsw-alias-bg-base` 之上加**固定增量**（亮色 +0.05、暗色 +0.17，两参考皮肤完全一致），而非按比例缩放（比例法在低通透度端增量趋零，分层失效）。P=10 时：正文底色 α=0.10，侧栏 α=亮 0.15 / 暗 0.27——菜单文字有足够衬底，正文区与壁纸保持通透；P=100 时增量被 1.0 封顶。侧栏 α 四舍五入到百分位（0.1+0.05 不得印成 0.15000000000000002）。
 
 ## 20. 终审记录
 

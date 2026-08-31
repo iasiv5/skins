@@ -87,6 +87,8 @@ export const SKINS = {
         // lives in the tgcf projector, calibrated through the historical
         // defaults P=82 → scrim 30 / blur 12); the blur/scrim fields are
         // retired — pre-1.0.0 there are no external users to migrate.
+        // Ruling #15: factory default 10 — the wallpaper reads through the
+        // content area while the sidebar keeps its own stronger fill.
         key: "panelOpacity",
         type: "range",
         scope: "single",
@@ -95,7 +97,7 @@ export const SKINS = {
         max: 100,
         step: 1,
         unit: "%",
-        default: 70,
+        default: 10,
       },
     ],
   },

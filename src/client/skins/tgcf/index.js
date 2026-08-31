@@ -62,6 +62,14 @@ function panelBase(lightMode, alpha) {
 }
 
 /**
+ * Sidebar presence above the content base (ruling #15), mirroring the
+ * reference skins' deltas: openbmc and uefi both sit their sidebar fill at
+ * bg-base +0.05 in the light theme and +0.17 in the dark theme, so the menu
+ * column keeps readable contrast while the content area stays translucent.
+ */
+const SIDEBAR_DELTA = { light: 0.05, dark: 0.17 };
+
+/**
  * Static identity palette since the personalization simplification (Q35):
  * accent/gold/bubbleColour stopped being editable fields, but the skin's
  * visual identity keeps the exact values that used to be catalog defaults.
@@ -116,6 +124,13 @@ export function createTgcfSkin(jsxRuntime) {
     // blur 12), so pre-merge looks survive unchanged at the same P. The
     // floor clamp is gone: P=0 is the fully transparent "pure wallpaper".
     const alpha = Math.min(1, Math.max(0, values.panelOpacity / 100));
+    // Sidebar fill rides ABOVE the content base by the reference-skin delta
+    // (ruling #15): menu column stays readable, content stays translucent.
+    // Rounded to points — 0.1 + 0.05 must never print as 0.15000000000000002.
+    const sidebarAlpha = {
+      light: Math.min(1, Math.round((alpha + SIDEBAR_DELTA.light) * 100) / 100),
+      dark: Math.min(1, Math.round((alpha + SIDEBAR_DELTA.dark) * 100) / 100),
+    };
     // Single-value scrim (Q35): one alpha drives both theme overlays; the
     // base tint stays per-theme (warm white veil / ink veil).
     const scrimAlpha = (Math.round((values.panelOpacity * 30) / 82) / 100).toFixed(3);
@@ -143,7 +158,7 @@ export function createTgcfSkin(jsxRuntime) {
         "--dsw-alias-button-primary-fill": PALETTE.accent,
         "--dsw-alias-button-primary-hover": PALETTE.gold,
         "--dsw-alias-bg-base": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
-        "--dsw-specific-sidebar-fill": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
+        "--dsh-specific-sidebar-fill": { light: panelBase(true, sidebarAlpha.light), dark: panelBase(false, sidebarAlpha.dark) },
         "--dsw-specific-bubble": PALETTE.bubble,
       },
       cssVariables: {
