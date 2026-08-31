@@ -126,13 +126,13 @@ for (const skinId of SKINS) {
 test("field edits preview locally and arm the auto-save; no save button exists", async () => {
   const panel = mountPanel({ skinId: "tgcf", status: "synced" });
   await tick();
-  const scrim = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
-  assert.notEqual(scrim, null, "scrim slider renders");
+  const translucency = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.panelTranslucency");
+  assert.notEqual(translucency, null, "translucency slider renders (ruling #14)");
   assert.equal(findButton(panel.tree(), "personalization.save"), null, "no save button (ADR-0003)");
 
-  scrim.props.onChange({ target: { value: "55" } });
+  translucency.props.onChange({ target: { value: "55" } });
   await tick();
-  assert.deepEqual(panel.configClient.calls.preview, [{ skinId: "tgcf", key: "scrim", value: 55 }]);
+  assert.deepEqual(panel.configClient.calls.preview, [{ skinId: "tgcf", key: "panelOpacity", value: 55 }]);
   assert.equal(panel.configClient.getState().dirtyCount, 1, "edits preview locally; the client debounces the flush");
 });
 
@@ -158,8 +158,8 @@ test("slogan text edits preview the complete locale object", async () => {
 test("恢复默认 confirms with the affected field list; decline is a no-op (user ruling #9)", async () => {
   const panel = mountPanel({ skinId: "tgcf", status: "synced" });
   await tick();
-  const scrim = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
-  scrim.props.onChange({ target: { value: "66" } });
+  const translucency = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.panelTranslucency");
+  translucency.props.onChange({ target: { value: "66" } });
   await tick();
   const reset = () => findButton(panel.tree(), "personalization.reset");
   assert.notEqual(reset(), null, "reset offered while overrides exist");
@@ -169,7 +169,7 @@ test("恢复默认 confirms with the affected field list; decline is a no-op (us
   await reset().props.onClick();
   await tick();
   assert.equal(panel.confirms.length, 1, "destructive reset asks first");
-  assert.ok(panel.confirms[0].includes("personalization.scrim"), "the affected field is listed");
+  assert.ok(panel.confirms[0].includes("personalization.panelTranslucency"), "the affected field is listed");
   assert.equal(panel.configClient.calls.flushNow, 1, "agreeing flushes the factory values at once");
   assert.deepEqual(panel.configClient.calls.previewReset.map((c) => c.key),
     getSkinSchema("tgcf").fields.map((f) => f.key), "every field reset to factory");
@@ -178,12 +178,12 @@ test("恢复默认 confirms with the affected field list; decline is a no-op (us
   // legitimately emptied the override set, so re-establish one first.)
   const declineConfirms = [];
   globalThis.window.confirm = (text) => { declineConfirms.push(text); return false; };
-  scrim.props.onChange({ target: { value: "70" } });
+  translucency.props.onChange({ target: { value: "70" } });
   await tick();
   await reset().props.onClick();
   await tick();
   assert.equal(declineConfirms.length, 1, "asked again");
-  assert.ok(declineConfirms[0].includes("personalization.scrim"), "affected field listed again");
+  assert.ok(declineConfirms[0].includes("personalization.panelTranslucency"), "affected field listed again");
   assert.equal(panel.configClient.calls.flushNow, 1, "decline flushes nothing");
   assert.equal(panel.configClient.calls.previewReset.length, getSkinSchema("tgcf").fields.length, "decline resets nothing");
 });
@@ -200,8 +200,8 @@ test("offline: every write path is disabled — edits included (ADR-0003)", asyn
   assert.equal(del.props.disabled, true, "per-asset delete disabled offline");
   assert.equal(findButton(tree, "personalization.library.clear").props.disabled, true, "清空图库 disabled offline");
   // Auto-save cannot persist offline — edits are disabled outright (no queue).
-  const scrim = flatten(tree).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
-  assert.equal(scrim.props.disabled, true, "field controls disabled offline");
+  const translucency = flatten(tree).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.panelTranslucency");
+  assert.equal(translucency.props.disabled, true, "field controls disabled offline");
 });
 
 test("清空图库 confirms with the affected list and stops at the first failure (Q45/L8)", async () => {
@@ -293,14 +293,14 @@ test("auto-save failure strip renders from lastFlushError and clears on edit (AD
   await tick();
   assert.equal(textsOf(panel.tree()).includes("personalization.saveFailed"), false, "clean panel shows no failure strip");
 
-  config.setState({ lastFlushError: "tgcf.scrim 校验失败（BAD_SHAPE）" });
+  config.setState({ lastFlushError: "tgcf.panelOpacity 校验失败（BAD_VALUE）" });
   await tick();
   assert.ok(textsOf(panel.tree()).includes("personalization.saveFailed"), "failure strip renders");
-  assert.ok(textsOf(panel.tree()).some((t) => typeof t === "string" && t.includes("BAD_SHAPE")), "the server's reason is surfaced");
+  assert.ok(textsOf(panel.tree()).some((t) => typeof t === "string" && t.includes("BAD_VALUE")), "the server's reason is surfaced");
 
   // A fresh edit always clears the strip.
-  const scrim = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
-  scrim.props.onChange({ target: { value: "10" } });
+  const translucency = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.panelTranslucency");
+  translucency.props.onChange({ target: { value: "10" } });
   await tick();
   assert.equal(textsOf(panel.tree()).includes("personalization.saveFailed"), false, "editing clears the strip");
 });
@@ -308,8 +308,8 @@ test("auto-save failure strip renders from lastFlushError and clears on edit (AD
 test("恢复默认 is disabled while offline (auto-save cannot persist, ADR-0003)", async () => {
   const panel = mountPanel({ skinId: "tgcf", status: "offline-failed" });
   await tick();
-  const scrim = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
-  scrim.props.onChange({ target: { value: "66" } });
+  const translucency = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.panelTranslucency");
+  translucency.props.onChange({ target: { value: "66" } });
   await tick();
   // Offline: the panel ignored the edit (writes gated) — hmm, it previews...
   // The REAL gate is on the client; here the strip-level check is that the

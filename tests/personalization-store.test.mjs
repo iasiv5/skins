@@ -191,7 +191,7 @@ test("load normalization drops unknown keys, stale shapes, dangling refs and orp
   const section = snapshot.skins.tgcf;
   assert.equal(section.futureField, undefined, "unknown key dropped");
   assert.equal(section.accent, undefined, "removed field dropped");
-  assert.equal(section.scrim, undefined, "stale shape dropped (single-value scrim replaces it)");
+  assert.equal(section.scrim, undefined, "retired field dropped (ruling #14: translucency knob)");
   assert.equal(section.wallpaper, undefined, "dangling user ref dropped");
   assert.deepEqual(section.slogan, { zh: "存", en: "Keep" }, "valid keys survive");
   assert.equal(snapshot.skins.removedSkin, undefined, "orphan section removed");
@@ -287,7 +287,7 @@ test("corrupt state with assets boots into recovery and keeps every blob", async
   // No destructive GC: everything is still on disk.
   assert.equal(readdirSync(join(dir, "assets")).length, 2);
   // Mutations are refused until recovery is confirmed.
-  await assert.rejects(setOverride(recovered, "tgcf", "blur", 1), (e) => e.code === "STORE_RECOVERY_REQUIRED");
+  await assert.rejects(setOverride(recovered, "tgcf", "panelOpacity", 1), (e) => e.code === "STORE_RECOVERY_REQUIRED");
 });
 
 test("missing state with assets boots into recovery, not first install", async () => {
@@ -321,8 +321,8 @@ test("confirmRecovery rebuilds the library, quarantines strays physically and ar
   const backups = readdirSync(dir).filter((name) => name.startsWith("state.json.corrupt."));
   assert.equal(backups.length, 1);
   // The store is writable again.
-  await setOverride(recovered, "tgcf", "blur", 3);
-  assert.equal(recovered.snapshot().skins.tgcf.blur, 3);
+  await setOverride(recovered, "tgcf", "panelOpacity", 3);
+  assert.equal(recovered.snapshot().skins.tgcf.panelOpacity, 3);
 });
 
 test("future configVersion boots read-only with zero writes and zero GC", async () => {
@@ -340,7 +340,7 @@ test("future configVersion boots read-only with zero writes and zero GC", async 
   assert.equal(snapshot.mode, "unsupported");
   assert.equal(snapshot.library.length, 1);
   // Old version still sees the newer skin section it doesn't understand.
-  await assert.rejects(setOverride(old, "tgcf", "blur", 1), (e) => e.code === "STORE_READONLY");
+  await assert.rejects(setOverride(old, "tgcf", "panelOpacity", 1), (e) => e.code === "STORE_READONLY");
   await assert.rejects(old.uploadAsset(pngBytes(), { displayName: "x" }), (e) => e.code === "STORE_READONLY");
   await assert.rejects(old.confirmRecovery(), (e) => e.code === "STORE_NOT_RECOVERING");
   // Zero writes / zero GC: both blobs survive untouched.
@@ -353,7 +353,7 @@ test("GC removes stray blobs on the next commit but never library members", asyn
   const store = makeStore(dir);
   const { asset } = await store.uploadAsset(pngBytes(), { displayName: "w" });
   writeFileSync(join(dir, "assets", "u_abababababababababababababababab.png"), pngBytes(3, 3));
-  await setOverride(store, "tgcf", "blur", 1); // triggers post-commit GC
+  await setOverride(store, "tgcf", "panelOpacity", 1); // triggers post-commit GC
   const names = readdirSync(join(dir, "assets"));
   assert.deepEqual(names, [`${asset.id}.png`]);
 });

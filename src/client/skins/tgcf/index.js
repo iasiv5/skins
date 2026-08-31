@@ -38,8 +38,10 @@ const BUTTERFLY_SPRITE = svgUrl(
 
 const CSS = [
   // Panel glass: the app shell frosts whatever sits behind it (the runtime
-  // backdrop pseudo layers) — fixed 12px per design §5.
-  `${SCOPE} #root{backdrop-filter:blur(12px)}`,
+  // backdrop pseudo layers). Ruling #14: the frost strength rides the same
+  // translucency curve as the wallpaper blur (var fed from project() below),
+  // so P=0 is unfrosted pure wallpaper; 12px at the historical default P=82.
+  `${SCOPE} #root{backdrop-filter:blur(var(--dsh-tgcf-glass-blur,12px))}`,
   // Ambient motion (always-on, design Q6): a slow lantern breath on the
   // wallpaper layer and two silver butterflies drifting between the
   // wallpaper and the frosted shell.
@@ -108,10 +110,16 @@ export function createTgcfSkin(jsxRuntime) {
   };
 
   function project(values, assets) {
-    const alpha = Math.min(1, Math.max(0.3, values.panelOpacity / 100));
+    // Ruling #14: one translucency knob drives all three layers — panel
+    // tint alpha, wallpaper scrim and blur — through a linear curve through
+    // the origin calibrated at the historical defaults (P=82 → scrim 30,
+    // blur 12), so pre-merge looks survive unchanged at the same P. The
+    // floor clamp is gone: P=0 is the fully transparent "pure wallpaper".
+    const alpha = Math.min(1, Math.max(0, values.panelOpacity / 100));
     // Single-value scrim (Q35): one alpha drives both theme overlays; the
     // base tint stays per-theme (warm white veil / ink veil).
-    const scrimAlpha = (values.scrim / 100).toFixed(3);
+    const scrimAlpha = (Math.round((values.panelOpacity * 30) / 82) / 100).toFixed(3);
+    const blurPx = Math.round((values.panelOpacity * 12) / 82);
     const scrimLight = `linear-gradient(rgba(255,246,234,${scrimAlpha}),rgba(255,246,234,${scrimAlpha}))`;
     const scrimDark = `linear-gradient(rgba(14,7,8,${scrimAlpha}),rgba(14,7,8,${scrimAlpha}))`;
     const wallpaperUrl = assets.wallpaper?.url ?? null;
@@ -127,7 +135,7 @@ export function createTgcfSkin(jsxRuntime) {
         imageDark: wallpaperUrl === null ? null : `url("${wallpaperUrl}")`,
         overlayLight: scrimLight,
         overlayDark: scrimDark,
-        blur: values.blur,
+        blur: blurPx,
       },
       tokenOverrides: {
         "--dsw-alias-brand-primary": PALETTE.accent,
@@ -138,7 +146,11 @@ export function createTgcfSkin(jsxRuntime) {
         "--dsw-specific-sidebar-fill": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
         "--dsw-specific-bubble": PALETTE.bubble,
       },
-      cssVariables: null,
+      cssVariables: {
+        // The panel-glass frost (static CSS consumes the var) rides the same
+        // curve; same value both themes — frost is a translucency effect.
+        "--dsh-tgcf-glass-blur": { light: `${blurPx}px`, dark: `${blurPx}px` },
+      },
       staticCss: CSS,
       decorations: null,
     };

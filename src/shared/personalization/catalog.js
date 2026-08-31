@@ -6,7 +6,7 @@
  *
  * Value model (design §2–§3): every field has a `type` (control + value
  * validation) and an orthogonal `scope` (persistence shape):
- *   single       → scalar            (panelOpacity: 82)
+ *   single       → scalar            (panelOpacity: 70)
  *   locale       → { zh, en }        (slogan)
  *   colorScheme  → { light, dark }   (no shipped field uses it since the
  *                                     simplification; machinery stays for
@@ -82,38 +82,20 @@ export const SKINS = {
         default: { zh: "百无禁忌", en: "No Taboos" },
       },
       {
+        // Ruling #14: ONE translucency knob. It drives the panel tint, the
+        // wallpaper scrim and the blur as one combined visual (the curve
+        // lives in the tgcf projector, calibrated through the historical
+        // defaults P=82 → scrim 30 / blur 12); the blur/scrim fields are
+        // retired — pre-1.0.0 there are no external users to migrate.
         key: "panelOpacity",
         type: "range",
         scope: "single",
-        labelKey: "personalization.panelOpacity",
-        min: 30,
-        max: 100,
-        step: 1,
-        unit: "%",
-        default: 82,
-      },
-      {
-        key: "blur",
-        type: "range",
-        scope: "single",
-        labelKey: "personalization.blur",
-        min: 0,
-        max: 24,
-        step: 1,
-        unit: "px",
-        default: 12,
-      },
-      {
-        // Simplification (Q35): one value for both themes, factory default 30.
-        key: "scrim",
-        type: "range",
-        scope: "single",
-        labelKey: "personalization.scrim",
+        labelKey: "personalization.panelTranslucency",
         min: 0,
         max: 100,
         step: 1,
         unit: "%",
-        default: 30,
+        default: 70,
       },
     ],
   },

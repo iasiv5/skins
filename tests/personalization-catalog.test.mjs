@@ -78,10 +78,10 @@ test("validateOverride: colors need 6-digit hex in both schemes", () => {
 test("validateOverride: ranges clamp to min/max in single scopes", () => {
   assert.equal(validateOverride("tgcf", "panelOpacity", 82).ok, true);
   assert.deepEqual(validateOverride("tgcf", "panelOpacity", 101), { ok: false, code: "BAD_VALUE" });
-  assert.deepEqual(validateOverride("tgcf", "panelOpacity", 29), { ok: false, code: "BAD_VALUE" });
+  assert.equal(validateOverride("tgcf", "panelOpacity", 0).ok, true, "ruling #14: 0% is the pure-wallpaper floor");
   assert.deepEqual(validateOverride("tgcf", "panelOpacity", "82"), { ok: false, code: "BAD_VALUE" });
-  assert.equal(validateOverride("tgcf", "scrim", 30).ok, true, "scrim is a single-value field since the simplification");
-  assert.deepEqual(validateOverride("tgcf", "scrim", { light: 0, dark: 100 }), { ok: false, code: "BAD_VALUE" }, "legacy light/dark pair shape is gone");
+  assert.deepEqual(validateOverride("tgcf", "blur", 5), { ok: false, code: "UNKNOWN_FIELD" }, "blur field retired by ruling #14");
+  assert.deepEqual(validateOverride("tgcf", "scrim", 30), { ok: false, code: "UNKNOWN_FIELD" }, "scrim field retired by ruling #14");
 });
 
 test("validateOverride: image builtin refs must belong to the owning skin", () => {
@@ -128,20 +128,22 @@ test("mergeValues: defaults fill untouched fields, overrides win when valid", ()
   assert.deepEqual(values.slogan, { zh: "改", en: "Changed" });
   assert.equal(values.panelOpacity, 60);
   assert.equal(values.wallpaper, "builtin:tgcf:crimson");
-  assert.equal(values.scrim, 30);
+  // Retired blur/scrim keys never appear in merged values (ruling #14).
+  assert.equal("blur" in values, false);
+  assert.equal("scrim" in values, false);
 });
 
 test("mergeValues: layer-1 fallback swaps invalid overrides for defaults and reports issues", () => {
   const { values, issues } = mergeValues("tgcf", {
     panelOpacity: 500,
-    scrim: 142,
+    blur: 5, // retired field: silently ignored, NOT an issue (ruling #14)
     unknownFutureKey: { any: "shape" },
   });
-  assert.equal(values.panelOpacity, 82);
-  assert.equal(values.scrim, 30);
-  assert.deepEqual(issues.map((issue) => issue.key).sort(), ["panelOpacity", "scrim"]);
+  assert.equal(values.panelOpacity, 70);
+  assert.deepEqual(issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
   // Unknown keys are ignored by projection (the store normalizes them away at load).
   assert.equal("unknownFutureKey" in values, false);
+  assert.equal("blur" in values, false);
 });
 
 test("mergeValues: image overrides validate against trusted metadata when provided", () => {
@@ -161,9 +163,10 @@ test("mergeValues: unknown skin yields empty values without throwing", () => {
 
 test("accessors expose schema, fields, asset fields and defaults", () => {
   const schema = getSkinSchema("tgcf");
-  assert.equal(schema.fields.length, 5);
-  assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "panelOpacity", "blur", "scrim"]);
-  assert.equal(getField("tgcf", "blur").max, 24);
+  assert.equal(schema.fields.length, 3);
+  assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "panelOpacity"]);
+  assert.equal(getField("tgcf", "blur"), null, "blur field retired by ruling #14");
+  assert.equal(getField("tgcf", "panelOpacity").default, 70);
   assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper"]);
   assert.deepEqual(listAssetFields("openbmc").map((field) => field.key), ["wallpaper"]);
   assert.equal(defaultsFor("tgcf").titleBrand, undefined);
@@ -176,9 +179,8 @@ test("pixel budgets stay coherent with the design contract", () => {
 });
 
 test("range values must sit on the declared step grid", () => {
-  assert.equal(validateOverride("tgcf", "blur", 5).ok, true);
-  assert.deepEqual(validateOverride("tgcf", "blur", 5.5), { ok: false, code: "BAD_VALUE" });
-  assert.equal(validateOverride("tgcf", "scrim", 18.5).ok, false);
+  assert.equal(validateOverride("tgcf", "panelOpacity", 70).ok, true);
+  assert.deepEqual(validateOverride("tgcf", "panelOpacity", 70.5), { ok: false, code: "BAD_VALUE" });
 });
 
 test("scope objects must carry exactly their canonical keys", () => {

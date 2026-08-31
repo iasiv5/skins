@@ -97,7 +97,7 @@ test("GET config returns the snapshot; PATCH applies field operations", async ()
     method: "PATCH",
     url: "/dsh-skins/config",
     headers: { ...TRUSTED, "content-type": "application/json" },
-    body: { baseRevision: 0, operations: [{ op: "set", skinId: "tgcf", key: "blur", value: 5 }] },
+    body: { baseRevision: 0, operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }] },
   }));
   assert.equal(patch.status, 200);
   assert.equal(JSON.parse(patch.body).revision, 1);
@@ -109,7 +109,7 @@ test("PATCH rejects invalid operations with INVALID_CONFIG and no partial writes
     method: "PATCH",
     url: "/dsh-skins/config",
     headers: { ...TRUSTED, "content-type": "application/json" },
-    body: { operations: [{ op: "set", skinId: "tgcf", key: "blur", value: 999 }] },
+    body: { operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 999 }] },
   }));
   assert.equal(state.status, 400);
   assert.equal(JSON.parse(state.body).code, "INVALID_CONFIG");
@@ -271,7 +271,7 @@ test("readonly stores surface STORE_READONLY as 409", async () => {
     method: "PATCH",
     url: "/dsh-skins/config",
     headers: { ...TRUSTED, "content-type": "application/json" },
-    body: { operations: [{ op: "set", skinId: "tgcf", key: "blur", value: 1 }] },
+    body: { operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 1 }] },
   }), response);
   assert.equal(response.state.status, 409);
   assert.equal(JSON.parse(response.state.body).code, "STORE_READONLY");

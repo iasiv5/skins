@@ -208,9 +208,7 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 |---|---|---|---|---|---|
 | wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签二选（v2.4.1 #6：AI 画作取代四个代码纹样） | `builtin:tgcf:crimson` | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
-| panelOpacity | range×single | 30–100, step 1, unit % | 82 | f.panelOpacity | tokenOverrides(bg-base/sidebar-fill, rgba 派生) |
-| blur | range×single | 0–24, step 1, unit px | 12 | f.blur | backdrop.blur |
-| scrim | range×single | 0–100, step 1, unit % | **30**（单值，亮暗同 α） | f.scrim | backdrop.overlayLight/Dark（单 α 双基色） |
+| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **70（裁决 #14 起）** | f.panelTranslucency | tokenOverrides(bg-base/sidebar-fill, rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14） |
 
 **v2.4 精简注记（Q35）**：favicon/accent/gold/bubbleColor 四字段删除。皮肤视觉身份不随之丢失——tgcf `project()` 将原 catalog 默认值（brand-primary #C3272B/#E0564A、鎏金 #C9A227/#D4AF37、气泡 #C3272B/#8E2A2F、灯笼 favicon）静态烘焙为皮肤常量；SkinEffects 契约（§3/§3a）不变。
 
@@ -334,6 +332,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.5 修订（实测问题 #12：展开时一级菜单被焦点滚动弹开）**：展开时面板标题挂载 effect 自动 focus；此刻壳仍处于窄宽、标题暂在右侧溢出区，浏览器为保持焦点可见将壳 `scrollLeft` 推到 25px，一级菜单由 x=29 瞬移到 x=4；壳宽展开后溢出消失、`scrollLeft` 归零，形成“弹掉/弹回”。修复：宽模式标题使用 `focus({ preventScroll: true })`，面板仍获得焦点但不触发中间横滚；<904px 堆叠模式保留普通 focus scroll，确保键盘焦点可达。逐帧实测宽模式展开全程 `scrollLeft=0`、一级菜单 x=29/宽 360px 不变。
 
 **v2.5 修订（实测问题 #13：展开时壳高单帧跳变，一级菜单整体上弹）**：#12 修复后仍有“弹掉”——playwright 逐帧采样显示壳高在类翻转帧**单帧**从 493px 跳到 628px（底锚定，一级菜单内容随顶缘整体上跳 135px），而宽度仍是 390px，随后宽度过渡才开跑：跳变与滑行动离成两个节拍，观感即“弹一下再滑出”。根因：壳高是内容驱动的 auto→auto，`transition:height` 永远不插值，展开/收回两个方向都存在单帧跳变（收回只是恰好与宽度滑动同拍而被掩盖）。修复：`sweepShellHeight`（齿轮切换的提交后、绘制前布局 effect）先把壳高**钉在切换前实测值**（`overflow-y:hidden` 压掉过渡期滚动条），强制重排确立过渡起点后释放到目标高度（`min(内容高, maxHeight 钳制)`），内联 transition 同时声明 `width`+`height`（内联 transition 会**整体替换**样式表的 width-only 规则，漏写宽度会让水平方向瞬移），200ms ease-out 与壳宽同拍；`transitionend` + 260ms 兜底释放内联样式，快速连点/中途关壳由 effect cleanup 复位，reduced-motion 与首开壳（无前值）直接跳过。实测：展开 h=493→558.9→628 随 w=739→993→1105 同帧渐进、无单帧跳变；收回到 493/390；中途打断后内联样式清空、终态精确；面板缩略图加 `decoding:async` 降低动画期解码卡顿。
+
+**v2.5 修订（用户裁决 #14：三滑杆合并为「面板通透度」，范围 0–100，默认 70）**：产品主裁决——面板不透明度/背景模糊/遮罩强度合并为**一个字段**，且旧范围 30–100 在低端仍“看不清壁纸”。根因是壁纸之上叠了三层互相独立的视觉：面板底色 α、遮罩纱（亮暖白/暗墨色，Q35 单值）、壁纸 blur，外加 #root 固定 12px 玻璃雾化——只调透明度动不了其余三层。裁决要点：①**删字段不删视觉**（沿 v2.4.1 #5/Q35 先例）：blur/scrim 字段退役，`project()` 由 panelOpacity 经**过原点线性曲线**联动派生三层——`遮罩 α = round(P×30/82)/100`、`壁纸模糊 = round(P×12/82)px`、`#root 玻璃雾化 = 同模糊曲线`（静态 CSS 改为 `var(--dsh-tgcf-glass-blur)`，经 cssVariables 通道注入）；曲线在 **P=82 处精确复刻旧默认**（遮罩 30/模糊 12），存量用户观感零迁移。②**范围 0–100、默认 70**：移除 schema `min:30` 与渲染层 `Math.max(0.3,…)` 双重下限——P=0 即纯壁纸完全可见（三层全零）；P=70 → 遮罩 26/模糊 10。③**存量退役**：1.0.0 未发布、无外部存量数据，旧 blur/scrim 覆写由 §5.5 加载规范化静默剔除，不做迁移；`panelOpacity` 键名不动（存储兼容），labelKey 改 `personalization.panelTranslucency`（zh「面板通透度」/en Panel translucency）。不设新 ADR：发布前无可逆性损失，ADR-0003 的字段枚举就地修订。
 
 ## 20. 终审记录
 

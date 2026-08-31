@@ -50,7 +50,7 @@ function makeConfigClient() {
     getState: () => state,
     onStateChange: (l) => (listeners.add(l), () => listeners.delete(l)),
     effectiveOverrides: () => ({}),
-    preview: () => { previews.set("tgcf scrim", 66); state = { ...state, dirtyCount: previews.size }; emit(); },
+    preview: () => { previews.set("tgcf panelOpacity", 66); state = { ...state, dirtyCount: previews.size }; emit(); },
     previewReset: () => {},
     restore: () => { calls.restore += 1; previews.clear(); state = { ...state, dirtyCount: 0 }; emit(); },
     flushNow: async () => { calls.flushNow += 1; return { flushed: 1 }; },
@@ -150,7 +150,7 @@ function makeHarness(viewportHeight = 900) {
   );
   const switcherButton = () => flatten(tree).find((n) => n.type === "button" && String(n.props.className).includes("dsh-skins-switcher-btn"));
   const panelColumn = () => inShell().find((n) => n.props?.className === "dsh-skins-pz-panel") ?? null;
-  const scrimInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "遮罩强度");
+  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "面板通透度");
   const heading = () => inShell().find((n) => n.props?.role === "heading");
 
   render();
@@ -161,7 +161,7 @@ function makeHarness(viewportHeight = 900) {
     attachFocusRecorders();
   };
 
-  return { dom, configClient, tree: () => tree, render, shell, gearButton, cardButton, switcherButton, panelColumn, scrimInput, heading, openShell, attachFocusRecorders, getActive: () => active,
+  return { dom, configClient, tree: () => tree, render, shell, gearButton, cardButton, switcherButton, panelColumn, translucencyInput, heading, openShell, attachFocusRecorders, getActive: () => active,
     cssText: () => dom.created.map((el) => el.textContent ?? "").join("\n") };
 }
 
@@ -209,7 +209,7 @@ test("③ outside click closes directly — no confirmation even with a pending 
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
-  h.scrimInput().props.onChange({ target: { value: "66" } });
+  h.translucencyInput().props.onChange({ target: { value: "66" } });
   await tick();
   assert.equal(h.configClient.getState().dirtyCount, 1, "edit pending (the debounce owns it)");
 
@@ -226,7 +226,7 @@ test("④ Escape closes directly — no confirmation (ADR-0003)", async () => {
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
-  h.scrimInput().props.onChange({ target: { value: "66" } });
+  h.translucencyInput().props.onChange({ target: { value: "66" } });
   await tick();
   h.dom.fireEscape();
   await tick();
@@ -286,7 +286,7 @@ test("⑧ card switch with a pending edit: direct switch, no confirm (ADR-0003)"
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
-  h.scrimInput().props.onChange({ target: { value: "66" } });
+  h.translucencyInput().props.onChange({ target: { value: "66" } });
   await tick();
   h.cardButton("uefi-harness").props.onClick();
   await tick();

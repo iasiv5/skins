@@ -15,7 +15,9 @@ function fixtureSkin() {
     id: "tgcf",
     bodyAttr: "dshTgcfSkin",
     project(values, assets) {
-      const scrimAlpha = (values.scrim / 100).toFixed(3);
+      // Mirrors the real tgcf projector: one translucency knob derives the
+      // scrim alpha and blur (ruling #14).
+      const scrimAlpha = (Math.round((values.panelOpacity * 30) / 82) / 100).toFixed(3);
       return {
         bodyAttribute: "dshTgcfSkin",
         slogans: values.slogan,
@@ -26,7 +28,7 @@ function fixtureSkin() {
           imageDark: `url("${assets.wallpaper?.url ?? "about:blank"}")`,
           overlayLight: `rgba(0,0,0,${scrimAlpha})`,
           overlayDark: `rgba(0,0,0,${scrimAlpha})`,
-          blur: values.blur,
+          blur: Math.round((values.panelOpacity * 12) / 82),
         },
         tokenOverrides: {
           "--dsw-alias-accent": PALETTE.accent,
@@ -68,36 +70,49 @@ function legacySkin() {
 test("projection with overrides succeeds without degradation", () => {
   const result = projectSkin(fixtureSkin(), {
     slogan: { zh: "自定义", en: "Custom" },
-    scrim: 60,
-    blur: 20,
+    panelOpacity: 82,
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.effects.slogans, { zh: "自定义", en: "Custom" });
-  assert.equal(result.effects.backdrop.blur, 20);
-  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.600)");
-  assert.equal(result.effects.backdrop.overlayDark, "rgba(0,0,0,0.600)", "single scrim drives both overlays");
+  assert.equal(result.effects.backdrop.blur, 12);
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)");
+  assert.equal(result.effects.backdrop.overlayDark, "rgba(0,0,0,0.300)", "one scrim alpha drives both overlays");
   assert.equal(result.effects.tokenOverrides["--dsw-alias-accent"].light, "#C3272B");
   assert.equal(result.effects.staticCss, "body[data-dsh-tgcf-skin] .x{color:red}");
   assert.equal(result.effects.decorations[0].key, "lanterns");
 });
 
+test("the translucency curve is calibrated through the historical defaults (ruling #14)", () => {
+  // P=82 must reproduce the retired fields' factory values exactly.
+  const historical = projectSkin(fixtureSkin(), { panelOpacity: 82 }, { assetResolver: resolver });
+  assert.equal(historical.effects.backdrop.blur, 12);
+  assert.equal(historical.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)");
+  // P=70 (new factory default) → scrim 26, blur 10.
+  const current = projectSkin(fixtureSkin(), {}, { assetResolver: resolver });
+  assert.equal(current.effects.backdrop.blur, 10);
+  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.260)");
+  // P=0 is the pure-wallpaper floor: every derived layer zeroes out.
+  const floor = projectSkin(fixtureSkin(), { panelOpacity: 0 }, { assetResolver: resolver });
+  assert.equal(floor.effects.backdrop.blur, 0);
+  assert.equal(floor.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)");
+});
+
 test("layer-1 field fallback keeps projection healthy with bad overrides", () => {
   const result = projectSkin(fixtureSkin(), {
-    scrim: 999,   // out of range → field default
-    blur: 999,    // out of range → field default
+    panelOpacity: 999, // out of range → field default
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
-  assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["blur", "scrim"]);
-  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)"); // catalog default 30
-  assert.equal(result.effects.backdrop.blur, 12); // catalog default
+  assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.260)"); // catalog default 70
+  assert.equal(result.effects.backdrop.blur, 10); // catalog default
 });
 
 test("a crashing projector triggers the defaults-only retry (layer 2)", () => {
   const skin = fixtureSkin();
   // Crash only when the override is present; defaults project cleanly.
   skin.project = (values) => {
-    if (values.blur === 20) throw new Error("boom");
+    if (values.panelOpacity === 20) throw new Error("boom");
     return {
       bodyAttribute: "dshTgcfSkin",
       slogans: defaultsFor("tgcf").slogan,
@@ -105,7 +120,7 @@ test("a crashing projector triggers the defaults-only retry (layer 2)", () => {
       backdrop: null,
     };
   };
-  const result = projectSkin(skin, { blur: 20 }, { assetResolver: resolver });
+  const result = projectSkin(skin, { panelOpacity: 20 }, { assetResolver: resolver });
   assert.equal(result.degraded, "defaults");
   assert.deepEqual(result.effects.slogans, defaultsFor("tgcf").slogan);
   assert.equal(result.effects.backdrop, null);
@@ -242,10 +257,12 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   const resolverFor = (ref) => ({ url: `builtin://${ref.skinId}/${ref.assetKey}`, mime: "image/svg+xml" });
   const result = projectSkin(skin, {}, { assetResolver: resolverFor });
   assert.equal(result.degraded, "none");
-  // Single-value scrim (default 30) drives BOTH overlays with one alpha.
-  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.300),rgba(255,246,234,0.300))");
-  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.300),rgba(14,7,8,0.300))");
-  assert.equal(result.effects.backdrop.blur, 12);
+  // Translucency curve at the new default P=70 → scrim 26, blur 10 (ruling #14);
+  // one alpha drives BOTH overlays.
+  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.260),rgba(255,246,234,0.260))");
+  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.260),rgba(14,7,8,0.260))");
+  assert.equal(result.effects.backdrop.blur, 10);
+  assert.deepEqual(result.effects.cssVariables["--dsh-tgcf-glass-blur"], { light: "10px", dark: "10px" });
   assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/crimson")');
   // Favicon is a static skin asset since the field was removed.
   assert.equal(result.effects.favicon.href, skin.favicon);

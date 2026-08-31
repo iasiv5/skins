@@ -99,7 +99,7 @@ test("failed boot lands in offline-failed and writes are gated", async () => {
   await client.boot();
   assert.equal(client.getState().status, "offline-failed");
   assert.equal(client.writeBlocked(), "offline");
-  client.preview("tgcf", "blur", 3);
+  client.preview("tgcf", "panelOpacity",3);
   const result = await client.flushNow();
   assert.deepEqual(result, { flushed: 0, blocked: "offline" });
   assert.equal(fetchImpl.calls.length, 1, "no PATCH was attempted while offline");
@@ -126,15 +126,15 @@ test("previews gate writes until flushed; effective overrides layer previews ove
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 9);
+  client.preview("tgcf", "panelOpacity",9);
   assert.equal(client.getState().dirtyCount, 1);
   // Preview layers over the synced snapshot without touching it.
-  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 9, panelOpacity: 70 });
+  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 5, panelOpacity: 9 });
   // Pending gate: status is synced so writes are allowed — flush explicitly.
   const result = await client.flushNow();
   assert.deepEqual(result, { flushed: 1 });
   assert.equal(patches.length, 1);
-  assert.deepEqual(patches[0].operations, [{ op: "set", skinId: "tgcf", key: "blur", value: 9 }]);
+  assert.deepEqual(patches[0].operations, [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 9 }]);
   client.dispose();
 });
 
@@ -152,16 +152,16 @@ test("a preview edited again mid-flight survives the flush of the older value", 
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 5);
+  client.preview("tgcf", "panelOpacity",5);
   const flushing = client.flushNow();
   // The user keeps dragging the slider while the first value is in flight.
-  client.preview("tgcf", "blur", 12);
+  client.preview("tgcf", "panelOpacity",12);
   releasePatch();
   await flushing;
   assert.equal(client.getState().dirtyCount, 1, "newer preview survives");
-  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 12 });
+  assert.deepEqual(client.effectiveOverrides("tgcf"), { panelOpacity: 12 });
   await client.flushNow();
-  assert.deepEqual(patches[1].operations, [{ op: "set", skinId: "tgcf", key: "blur", value: 12 }]);
+  assert.deepEqual(patches[1].operations, [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 12 }]);
   client.dispose();
 });
 
@@ -174,11 +174,11 @@ test("previewReset schedules a delete op; failed writes keep previews dirty for 
       if (fail) return jsonResponse(500, { error: "boom" });
       return jsonResponse(200, { revision: 8 });
     }
-    return snapshotBody({ skins: { tgcf: { blur: 5 } } });
+    return snapshotBody({ skins: { tgcf: { panelOpacity: 70 } } });
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.previewReset("tgcf", "blur");
+  client.previewReset("tgcf", "panelOpacity");
   fail = true;
   assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "error", errorMessage: "boom" });
   assert.equal(client.getState().dirtyCount, 1, "preview kept dirty after failure");
@@ -186,7 +186,7 @@ test("previewReset schedules a delete op; failed writes keep previews dirty for 
 
   fail = false;
   assert.deepEqual(await client.flushNow(), { flushed: 1 });
-  assert.deepEqual(patches[0].operations, [{ op: "delete", skinId: "tgcf", key: "blur" }]);
+  assert.deepEqual(patches[0].operations, [{ op: "delete", skinId: "tgcf", key: "panelOpacity" }]);
   client.dispose();
 });
 
@@ -210,7 +210,7 @@ test("409 STORE_READONLY downgrades the client to read-only WITHOUT a refetch", 
   const client = flushingClient(fetchImpl);
   await client.boot();
   const callsAfterBoot = fetchImpl.calls.length;
-  client.preview("tgcf", "blur", 3);
+  client.preview("tgcf", "panelOpacity",3);
   assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict", errorMessage: "readonly" });
   assert.equal(client.getState().status, "unsupported-readonly");
   assert.equal(client.getState().dirtyCount, 1, "dirty state retained for the UI");
@@ -233,7 +233,7 @@ test("409 revision conflict auto-refetches and retries once (ADR-0003)", async (
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 3);
+  client.preview("tgcf", "panelOpacity",3);
   const result = await client.flushNow();
   assert.deepEqual(result, { flushed: 1 }, "the conflict auto-retry lands the preview");
   assert.equal(patches.length, 2, "exactly one automatic retry — no user action");
@@ -247,30 +247,30 @@ test("auto-save: the debounce window merges into ONE PATCH (ADR-0003)", async ()
   const fetchImpl = makeFetch(() => snapshotBody());
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 3);
-  client.preview("tgcf", "scrim", 40);
+  client.preview("tgcf", "panelOpacity",3);
+  client.preview("tgcf", "wallpaper", "builtin:tgcf:pale");
   client.previewReset("tgcf", "slogan");
   assert.equal(client.getState().dirtyCount, 3);
   await new Promise((resolve) => setTimeout(resolve, 520)); // > 400ms debounce
   const patchCalls = fetchImpl.calls.filter((c) => c.init.method === "PATCH");
   assert.equal(patchCalls.length, 1, "the whole quiet window merges into one PATCH");
   const patchBody = JSON.parse(patchCalls[0].init.body);
-  assert.deepEqual(patchBody.operations.map((o) => o.key), ["blur", "scrim", "slogan"]);
+  assert.deepEqual(patchBody.operations.map((o) => o.key), ["panelOpacity", "wallpaper", "slogan"]);
   assert.equal(client.getState().dirtyCount, 0, "auto-save cleared the preview layer");
   client.dispose();
 });
 
 test("lastFlushError: a failed auto-save surfaces, the next edit clears it (ADR-0003)", async () => {
   const fetchImpl = makeFetch((index, url, init) => {
-    if (init.method === "PATCH") return jsonResponse(400, { error: "tgcf.blur 校验失败（BAD_VALUE）" });
+    if (init.method === "PATCH") return jsonResponse(400, { error: "tgcf.panelOpacity 校验失败（BAD_VALUE）" });
     return snapshotBody();
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 9);
+  client.preview("tgcf", "panelOpacity",9);
   await new Promise((resolve) => setTimeout(resolve, 520));
-  assert.equal(client.getState().lastFlushError, "tgcf.blur 校验失败（BAD_VALUE）", "failure surfaced for the panel strip");
-  client.preview("tgcf", "blur", 10); // a fresh edit always clears the strip
+  assert.equal(client.getState().lastFlushError, "tgcf.panelOpacity 校验失败（BAD_VALUE）", "failure surfaced for the panel strip");
+  client.preview("tgcf", "panelOpacity",10); // a fresh edit always clears the strip
   assert.equal(client.getState().lastFlushError, null);
   client.dispose();
 });
@@ -352,15 +352,15 @@ test("HTTP 500 responses land in offline-failed, never synced", async () => {
 
 test("a non-ok PATCH carries the server error message to the caller (field report)", async () => {
   const fetchImpl = makeFetch((index, url, init) => {
-    if (init.method === "PATCH") return jsonResponse(400, { error: "tgcf.scrim 校验失败（BAD_SHAPE）", code: "INVALID_CONFIG" });
+    if (init.method === "PATCH") return jsonResponse(400, { error: "tgcf.blur 校验失败（UNKNOWN_FIELD）", code: "INVALID_CONFIG" });
     return snapshotBody();
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "scrim", 0);
+  client.preview("tgcf", "blur", 0); // a RETIRED field key — the server, not the client, rejects it
   const result = await client.flushNow();
   assert.equal(result.blocked, "error");
-  assert.equal(result.errorMessage, "tgcf.scrim 校验失败（BAD_SHAPE）");
+  assert.equal(result.errorMessage, "tgcf.blur 校验失败（UNKNOWN_FIELD）");
   assert.equal(client.getState().dirtyCount, 1, "previews stay dirty for retry");
   client.dispose();
 });
@@ -378,9 +378,9 @@ test("a rejected PATCH never poisons the write chain — the next flush retries"
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 4);
+  client.preview("tgcf", "panelOpacity",4);
   assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "error" });
-  client.preview("tgcf", "blur", 6);
+  client.preview("tgcf", "panelOpacity",6);
   failNetwork = false;
   assert.deepEqual(await client.flushNow(), { flushed: 1 });
   assert.equal(patches.length, 2, "the retry actually reached the wire");
@@ -400,7 +400,7 @@ test("queued writes are skipped after dispose (no post-dispose PATCH)", async ()
   });
   const client = flushingClient(fetchImpl);
   await client.boot();
-  client.preview("tgcf", "blur", 4);
+  client.preview("tgcf", "panelOpacity",4);
   const flushing = client.flushNow();
   client.dispose(); // the queued task must observe this before sending
   release();
