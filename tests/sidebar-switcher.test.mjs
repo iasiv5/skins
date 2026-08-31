@@ -335,6 +335,8 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
     "the list column is 360px in BOTH narrow and wide shells (no menu resize on gear click)");
   assert.ok(css.includes("transition:width .2s ease-out"),
     "the shell width animates so docking looks smooth");
+  assert.ok(css.includes("min-width:0;width:360px;flex:none"),
+    "list column width is fixed in the BASE rule — the instant wide-class flip on collapse cannot resize it");
   assert.ok(css.includes(".dsh-skins-pop{transition:none}"),
     "reduced-motion skips the width animation");
 
