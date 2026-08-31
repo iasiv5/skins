@@ -341,6 +341,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 
 **v2.5 修订（用户裁决 #16：深色弹层底色与皮肤色系统一）**：产品主反馈深色下官方与 tgcf 的换肤弹层底色「灰灰的」。实测：弹层底色消费 `--dsw-alias-bg-overlay`，openbmc/uefi 均以自身色系覆盖（深冰蓝 rgba(10,22,32,.88) / 深紫 rgba(27,21,54,.88)），而 tgcf 未覆盖、官方无皮肤可覆盖，双双落到宿主中灰默认 `#61666b`——比官方深色主底 `#151517` 亮一大截，观感发闷。修复：①tgcf `tokenOverrides` 增补 `bg-overlay` 常量对（亮=素白 rgba(255,252,246,.82)、暗=墨黑 rgba(24,16,16,.88)，即 panelBase 族、与 openbmc「浮层较实」结构一致）；②官方深色下由换肤器自身 CSS 提供深炭色弹层 `rgba(41,42,44,.97)`——作用域 `body[data-ds-dark-theme]:not([各皮肤 attr])`，只在无皮肤挂载时生效，皮肤态的 token 驱动不受影响（注意 uefi 的 body 属性是 `data-dsh-uefi-harness`，无 `-skin` 后缀）。
 
+**v2.5 修订（裁决 #16 续：浅色弹层控件色调按皮肤色系标准化）**：同一标准推广到弹层控件的交互态——①tgcf `tokenOverrides` 增补控件态常量对：`interactive-bg-hover`（朱红 0.08/0.14 亮暗，对齐 openbmc/uefi 的同结构 alphas）、`interactive-bg-active`（0.14/0.20）、`bg-module-platform`（素白 0.92/墨 0.92）、`sidebar-nav-item-hover/active`（素白 0.6/0.6 与 0.9/0.9）——换肤按钮的悬停、选中卡片底、触发器芯片不再落入宿主中性蓝灰默认。②弹层选中态描边从冻结静态 `--dsw-static-neutral-bluish-400`（蓝灰，与朱红/紫系冲突）改为 **`--dsw-alias-brand-primary`**：各皮肤选中卡片描边即各自品牌主色（tgcf 朱红 #C3272B/#E0564A、openbmc 冰蓝 #0083b0/#3ec1e8、uefi 紫 #6553d8/#a99cff、官方墨黑 #0f1115），浅深两态自动跟随。③修复齿轮按钮悬停的 `--dsh-alias-interactive-bg-hover` 前缀笔误（同 #15 的 dsh/dsw 混淆，死键导致齿轮无悬停反馈）。官方浅色系为黑白极简、本就是宿主默认，无需另调。
+
 ## 20. 终审记录
 
 Q1–Q34（产品）→ v1 → v2 → v2.1 → v2.2（三轮差异复核）→ v2.3（实现评审修订：backdrop 接口形状 §3a、§9a 获批）→ **v2.4（精简轮：Q35–Q53 产品裁决 + ADR-0001/0002 + 计划三轮评审放行）**。实现评审 13 红项、N1/N2、N3 全部闭合；精简轮按 T0–T8 交付，每 commit check 绿色，活 GUI gate 8/8 通过。

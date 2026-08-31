@@ -166,6 +166,14 @@ export function createTgcfSkin(jsxRuntime) {
         // but tinted with the skin family - 素白 light / 墨黑 dark - instead of
         // the host's neutral gray (ruling #16).
         "--dsw-alias-bg-overlay": { light: panelBase(true, 0.82), dark: panelBase(false, 0.88) },
+        // Control states tint with the 朱红 family (ruling #16, mirroring the
+        // openbmc/uefi alphas 0.08/0.14): hovers and the trigger chip stop
+        // falling back to the host's neutral blue-gray.
+        "--dsw-alias-interactive-bg-hover": { light: "rgba(195,39,43,0.08)", dark: "rgba(224,86,74,0.14)" },
+        "--dsw-alias-interactive-bg-active": { light: "rgba(195,39,43,0.14)", dark: "rgba(224,86,74,0.20)" },
+        "--dsw-alias-bg-module-platform": { light: "rgba(255,252,246,0.92)", dark: "rgba(24,16,16,0.92)" },
+        "--dsw-specific-sidebar-nav-item-hover": { light: "rgba(255,252,246,0.6)", dark: "rgba(24,16,16,0.6)" },
+        "--dsw-specific-sidebar-nav-item-active": { light: "rgba(255,252,246,0.9)", dark: "rgba(24,16,16,0.9)" },
         "--dsw-specific-bubble": PALETTE.bubble,
       },
       cssVariables: {

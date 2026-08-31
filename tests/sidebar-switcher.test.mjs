@@ -344,6 +344,11 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
   assert.ok(
     css.includes('body[data-ds-dark-theme]:not([data-dsh-openbmc-skin]):not([data-dsh-uefi-harness]):not([data-dsh-tgcf-skin]) .dsh-skins-pop{background:rgba(41,42,44,0.97)}'),
     "official dark pop gets a deep charcoal, skinned modes keep their token overlay (ruling #16)");
+  assert.ok(
+    css.includes(".dsh-skins-pop-card-on,.dsh-skins-pop-card-on:hover{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-module-platform)}"),
+    "selected cards border with the skin brand color, not the frozen blue static (ruling #16)");
+  assert.ok(!css.includes("var(--dsh-alias-interactive-bg-hover)"),
+    "gear hover consumes the real dsw token - the dsh name is a dead key (ruling #16)");
 
   const tiny = makeHarness(260);
   await tiny.openShell();

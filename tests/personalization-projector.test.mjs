@@ -280,6 +280,10 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-primary"], { light: "#C3272B", dark: "#E0564A" });
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-text"], { light: "#C9A227", dark: "#D4AF37" });
   assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-bubble"], { light: "#C3272B", dark: "#8E2A2F" });
+  // Control states tint with the vermilion family (ruling #16).
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-interactive-bg-hover"], { light: "rgba(195,39,43,0.08)", dark: "rgba(224,86,74,0.14)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-overlay"], { light: "rgba(255,252,246,0.82)", dark: "rgba(24,16,16,0.88)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-sidebar-nav-item-active"], { light: "rgba(255,252,246,0.9)", dark: "rgba(24,16,16,0.9)" });
   assert.ok(result.effects.tokenOverrides["--dsw-alias-bg-base"].light.startsWith("rgba(255,252,246,"));
   assert.deepEqual(result.effects.slogans, { zh: "百无禁忌", en: "No Taboos" });
 });
