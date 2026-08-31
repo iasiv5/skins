@@ -200,34 +200,16 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     const [themePreference, setThemePreference] = react.useState(() => ctx.theme?.getTheme?.().preference ?? "system");
     const buttonRef = react.useRef(null);
 
-    // Closing the shell clears the panel state. It NEVER flushes: with the
-    // explicit-save model (ADR-0001) leaving is either a confirmed discard
-    // (confirmLeave below) or a clean exit — nothing auto-saves (R1).
+    // Closing the shell clears the panel state. Auto-save lives in the
+    // session-global config client (ADR-0003), so an in-flight debounce
+    // completes regardless of the shell's lifecycle.
     react.useEffect(() => {
       if (open) return undefined;
       setPersonalizeId(null);
       return undefined;
     }, [open]);
 
-    /**
-     * The five leave channels — blank click / switcher button / Escape /
-     * gear collapse / switching the panel target to another skin — all pass
-     * through here. Dirty edits → one confirm; agree = discard via restore()
-     * then continue, refuse = nothing changes. MUST run before runtime.select
-     * so a refusal cannot leave an active=B/panel=A half-state (③-2).
-     */
-    function confirmLeave() {
-      if (personalizeId === null) return true;
-      if (configClient.getState().dirtyCount === 0) return true;
-      if (typeof window !== "undefined" && !window.confirm(localeTranslate("personalization.dirtyLeave"))) {
-        return false;
-      }
-      configClient.restore();
-      return true;
-    }
-
     const closeShell = () => {
-      if (!confirmLeave()) return;
       setOpen(false);
       // The gear unmounts with the shell; focus lands on the persistent trigger.
       buttonRef.current?.focus?.();
@@ -248,7 +230,7 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
         document.removeEventListener("pointerdown", onPointer, true);
         window.removeEventListener("keydown", onKey);
       };
-    }, [open, personalizeId]);
+    }, [open]);
 
     react.useEffect(() => {
       const onChange = () => setActiveId(runtime.active());
@@ -297,12 +279,10 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
         onClick: () => {
           // Panel open → the card is a panel-target switch (design §7.2,
           // v2.4.1): the panel follows the selection so active and panel
-          // target can never split. The dirty guard MUST run before
-          // runtime.select — a refusal keeps both untouched (③-2). A
-          // non-personalizable target (no schema) collapses the panel
-          // through the same guard instead of following.
+          // target can never split. No confirmation — auto-save keeps the
+          // preview layer transient and harmless (v2.5). A non-personalizable
+          // target (no schema) collapses the panel instead of following.
           if (personalizeId !== null && personalizeId !== skin.id) {
-            if (!confirmLeave()) return;
             setPersonalizeId(personalizable ? skin.id : null);
           }
           runtime.select(skin.id);
@@ -325,18 +305,17 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           title: localeTranslate("personalization.title"),
           "aria-expanded": personalizeId === skin.id,
           onClick: () => {
-            // Guard BEFORE runtime.select (③-2): switching the panel target or
-            // collapsing the panel with dirty edits asks first; refuse keeps
-            // both the active skin and the panel target untouched.
-            const leavingPanel = personalizeId !== null;
-            if (leavingPanel && !confirmLeave()) return;
-            // Opening the panel selects the skin so edits preview live.
+            if (personalizeId === skin.id) {
+              // Collapse: focus returns to the gear.
+              setPersonalizeId(null);
+              try { document.getElementById(`${skin.id}-gear`)?.focus?.(); } catch {}
+              return;
+            }
+            // Opening (or re-targeting) the panel selects the skin so edits
+            // preview live; auto-save persists them in the background (v2.5).
             runtime.select(skin.id);
             setActiveId(runtime.active());
-            setPersonalizeId(personalizeId === skin.id ? null : skin.id);
-            if (personalizeId === skin.id) {
-              try { document.getElementById(`${skin.id}-gear`)?.focus?.(); } catch {}
-            }
+            setPersonalizeId(skin.id);
           },
           children: [
             jsx(GearIcon, {}),

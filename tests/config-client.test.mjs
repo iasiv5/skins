@@ -211,14 +211,14 @@ test("409 STORE_READONLY downgrades the client to read-only WITHOUT a refetch", 
   await client.boot();
   const callsAfterBoot = fetchImpl.calls.length;
   client.preview("tgcf", "blur", 3);
-  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict" });
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict", errorMessage: "readonly" });
   assert.equal(client.getState().status, "unsupported-readonly");
   assert.equal(client.getState().dirtyCount, 1, "dirty state retained for the UI");
   assert.equal(fetchImpl.calls.length, callsAfterBoot + 1, "readonly downgrade performs no extra GET");
   client.dispose();
 });
 
-test("409 revision conflict refetches the fresh snapshot so a retry can succeed", async () => {
+test("409 revision conflict auto-refetches and retries once (ADR-0003)", async () => {
   const patches = [];
   let revision = 7;
   const fetchImpl = makeFetch((index, url, init) => {
@@ -234,39 +234,50 @@ test("409 revision conflict refetches the fresh snapshot so a retry can succeed"
   const client = flushingClient(fetchImpl);
   await client.boot();
   client.preview("tgcf", "blur", 3);
-  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict" });
-  assert.equal(client.getState().revision, 8, "conflict path refetched the fresh snapshot");
-  assert.equal(client.getState().dirtyCount, 1, "previews survive the conflict for the retry");
-  assert.deepEqual(await client.flushNow(), { flushed: 1 });
-  assert.equal(patches[1].baseRevision, 8, "retry rides the new baseRevision");
+  const result = await client.flushNow();
+  assert.deepEqual(result, { flushed: 1 }, "the conflict auto-retry lands the preview");
+  assert.equal(patches.length, 2, "exactly one automatic retry — no user action");
+  assert.equal(patches[0].baseRevision, 7, "first attempt rode the stale revision");
+  assert.equal(patches[1].baseRevision, 8, "retry rides the fresh baseRevision");
+  assert.equal(client.getState().dirtyCount, 0);
   client.dispose();
 });
 
-test("explicit-save model: previews never auto-flush; save is the only write path", async () => {
+test("auto-save: the debounce window merges into ONE PATCH (ADR-0003)", async () => {
   const fetchImpl = makeFetch(() => snapshotBody());
   const client = flushingClient(fetchImpl);
   await client.boot();
-  const callsAfterBoot = fetchImpl.calls.length;
   client.preview("tgcf", "blur", 3);
   client.preview("tgcf", "scrim", 40);
   client.previewReset("tgcf", "slogan");
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.equal(fetchImpl.calls.length, callsAfterBoot, "no PATCH without an explicit save");
   assert.equal(client.getState().dirtyCount, 3);
+  await new Promise((resolve) => setTimeout(resolve, 520)); // > 400ms debounce
+  const patchCalls = fetchImpl.calls.filter((c) => c.init.method === "PATCH");
+  assert.equal(patchCalls.length, 1, "the whole quiet window merges into one PATCH");
+  const patchBody = JSON.parse(patchCalls[0].init.body);
+  assert.deepEqual(patchBody.operations.map((o) => o.key), ["blur", "scrim", "slogan"]);
+  assert.equal(client.getState().dirtyCount, 0, "auto-save cleared the preview layer");
   client.dispose();
 });
 
-test("restore discards every preview and returns to the synced values", async () => {
-  const fetchImpl = makeFetch(() => snapshotBody({ skins: { tgcf: { blur: 5 } } }));
+test("lastFlushError: a failed auto-save surfaces, the next edit clears it (ADR-0003)", async () => {
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") return jsonResponse(400, { error: "tgcf.blur 校验失败（BAD_VALUE）" });
+    return snapshotBody();
+  });
   const client = flushingClient(fetchImpl);
   await client.boot();
   client.preview("tgcf", "blur", 9);
-  client.preview("tgcf", "scrim", 60);
-  assert.equal(client.getState().dirtyCount, 2);
-  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 9, scrim: 60 });
-  client.restore();
-  assert.equal(client.getState().dirtyCount, 0);
-  assert.deepEqual(client.effectiveOverrides("tgcf"), { blur: 5 }, "back to the synced snapshot");
+  await new Promise((resolve) => setTimeout(resolve, 520));
+  assert.equal(client.getState().lastFlushError, "tgcf.blur 校验失败（BAD_VALUE）", "failure surfaced for the panel strip");
+  client.preview("tgcf", "blur", 10); // a fresh edit always clears the strip
+  assert.equal(client.getState().lastFlushError, null);
+  client.dispose();
+});
+
+test("restore is gone from the client API (ADR-0003)", () => {
+  const client = flushingClient(makeFetch(() => snapshotBody()));
+  assert.equal("restore" in client, false, "no revert concept in the auto-save model");
   client.dispose();
 });
 

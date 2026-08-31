@@ -7,8 +7,9 @@
  *   offline-failed        fetch failed/timed out; retry offered; writes forbidden
  *   unsupported-readonly  Host runs a newer configVersion; view-only
  *
- * Edits live in the preview layer and project locally in real time, but
- * NOTHING is persisted until the panel's 保存 button calls flushNow().
+ * ADR-0003 (v2.5) — write-through auto-save: edits live in the preview
+ * layer, project locally in real time, and persist automatically via a
+ * 400ms debounce (one PATCH per quiet window). No save action exists.
  * Guards (all covered by tests):
  *   - fetch arrives after the user already switched skins → applied anyway
  *     (config is orthogonal to skin selection), but late responses after
@@ -21,6 +22,9 @@
  *     STORE_READONLY 409 downgrades to read-only with no refetch;
  *   - writes emit `dsh-skins:config-changed` + a BroadcastChannel ping so
  *     other tabs refetch; window focus refetch is the fallback path;
+ *   - a revision conflict auto-refetches and retries once; only a conflict
+ *     that survives the retry (or a non-409 failure) lands in
+ *     lastFlushError for the panel's warning strip;
  *   - every applied snapshot emits to local subscribers — including
  *     same-status refetches, whose silent swaps previously starved the UI.
  */
@@ -46,6 +50,7 @@ export function createConfigClient(options = {}) {
   let fetchGeneration = 0;
   let disposed = false;
   let writeChain = Promise.resolve();
+  let lastFlushError = null; // surfaced via publicState; cleared by the next edit or successful flush
   let channel = null;
 
   // -- plumbing --------------------------------------------------------------
@@ -66,6 +71,7 @@ export function createConfigClient(options = {}) {
       references: snapshot.references ?? {},
       recovery: snapshot.recovery,
       quota: snapshot.quota,
+      lastFlushError,
       dirtyCount: previews.size,
     };
   }
@@ -140,6 +146,14 @@ export function createConfigClient(options = {}) {
   }
 
   // -- writes (serialized; gated by state machine) ---------------------------
+  // ADR-0003 (v2.5): write-through auto-save. preview/previewReset arm a
+  // 400ms debounce; the flush merges the window's edits into one PATCH and
+  // retries a revision conflict once on the fresh baseRevision — no user
+  // action anywhere. The client is a session-global singleton, so an
+  // in-flight debounce completes regardless of the shell's lifecycle.
+
+  const FLUSH_DEBOUNCE_MS = 400;
+  let flushTimer = null;
 
   function gateWrites() {
     if (status === "synced") return null;
@@ -148,55 +162,74 @@ export function createConfigClient(options = {}) {
     return "offline";
   }
 
+  function scheduleFlush() {
+    if (flushTimer !== null) clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      void flushNow();
+    }, FLUSH_DEBOUNCE_MS);
+  }
+
   function flushNow() {
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
     if (previews.size === 0) return Promise.resolve({ flushed: 0 });
     // Snapshot the dirty layer; previews captured here are the flush intent.
     const intent = [...previews.entries()];
-    const operations = intent.map(([composite, value]) => {
+    const buildOperations = () => intent.map(([composite, value]) => {
       const [skinId, key] = composite.split(" ");
       return value === null ? { op: "delete", skinId, key } : { op: "set", skinId, key, value };
     });
-    const count = operations.length;
+    const count = buildOperations().length;
     writeChain = writeChain.then(async () => {
       try {
         if (disposed) return { flushed: 0, blocked: "disposed" };
         const blocked = gateWrites();
         if (blocked !== null) return { flushed: 0, blocked };
-        const response = await request("/config", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ baseRevision: snapshot.revision, operations }),
-        });
-        if (disposed) return { flushed: 0 };
-        if (response.status === 409) {
-          const body = await response.json().catch(() => null);
-          if (body?.code === "STORE_READONLY") {
-            setStatus("unsupported-readonly");
-            return { flushed: 0, blocked: "conflict" };
+        // ADR-0003: a revision conflict auto-resolves — refetch the fresh
+        // snapshot and retry once on the new baseRevision. Only a conflict
+        // that survives the retry surfaces to the user.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const response = await request("/config", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ baseRevision: snapshot.revision, operations: buildOperations() }),
+          });
+          if (disposed) return { flushed: 0 };
+          if (response.status === 409) {
+            const conflictBody = await response.json().catch(() => null);
+            if (conflictBody?.code === "STORE_READONLY") {
+              setStatus("unsupported-readonly");
+              return { flushed: 0, blocked: "conflict", errorMessage: conflictBody.error ?? "" };
+            }
+            await refetch(); // fresh baseRevision; previews stay dirty
+            continue;
           }
-          // Revision conflict: pull the fresh snapshot (previews stay dirty)
-          // so the user's next 保存 retries on the new baseRevision.
+          if (!response.ok) {
+            // Keep the previews dirty so a later edit can retry — and NAME
+            // the failure: a silent 400 reads as "did it save?" (field
+            // report: the stale-host BAD_SHAPE stayed invisible for days).
+            const errorBody = await response.json().catch(() => null);
+            const errorMessage = errorBody?.error ?? `HTTP ${response.status}`;
+            lastFlushError = errorMessage;
+            emit();
+            return { flushed: 0, blocked: "error", errorMessage };
+          }
+          await response.json().catch(() => null); // drained; resync happens in refetch()
+          // Clear only previews the user has not superseded during the flight.
+          for (const [composite, value] of intent) {
+            if (previews.get(composite) === value) previews.delete(composite);
+          }
+          lastFlushError = null;
+          // Resync from the Host rather than trusting a racing local snapshot:
+          // a refetch issued mid-flight may otherwise resurrect pre-write state.
           await refetch();
-          return { flushed: 0, blocked: "conflict" };
+          announce();
+          return { flushed: count };
         }
-        if (!response.ok) {
-          // Keep the previews dirty so the panel can retry (design Y6) — and
-          // NAME the failure: a silent 400 reads as "did it save?" (field
-          // report: the stale-host BAD_SHAPE stayed invisible for days).
-          const errorBody = await response.json().catch(() => null);
-          return { flushed: 0, blocked: "error", errorMessage: errorBody?.error ?? `HTTP ${response.status}` };
-        }
-        const body = await response.json();
-        void body; // drained; the authoritative resync happens in refetch()
-        // Clear only previews the user has not superseded during the flight.
-        for (const [composite, value] of intent) {
-          if (previews.get(composite) === value) previews.delete(composite);
-        }
-        // Resync from the Host rather than trusting a racing local snapshot:
-        // a refetch issued mid-flight may otherwise resurrect pre-write state.
-        await refetch();
-        announce();
-        return { flushed: count };
+        return { flushed: 0, blocked: "conflict" };
       } catch {
         // The chain itself must stay fulfilled: one network failure may
         // never poison subsequent flushes (previews stay dirty for retry).
@@ -223,18 +256,16 @@ export function createConfigClient(options = {}) {
   /** Record an unsaved edit: projects locally, persists nothing (ADR-0001). */
   function preview(skinId, key, value) {
     previews.set(`${skinId} ${key}`, value);
+    lastFlushError = null; // a fresh edit always clears the failure strip
+    scheduleFlush();
     emit();
   }
 
   /** Record an unsaved reset-to-default (a delete op) for the field. */
   function previewReset(skinId, key) {
     previews.set(`${skinId} ${key}`, null);
-    emit();
-  }
-
-  /** Discard every unsaved edit and return to the last synced values. */
-  function restore() {
-    previews.clear();
+    lastFlushError = null;
+    scheduleFlush();
     emit();
   }
 
@@ -314,7 +345,6 @@ export function createConfigClient(options = {}) {
     flushNow,
     preview,
     previewReset,
-    restore,
     effectiveOverrides,
     uploadImage,
     deleteImage,
@@ -328,6 +358,7 @@ export function createConfigClient(options = {}) {
     },
     dispose() {
       disposed = true;
+      if (flushTimer !== null) clearTimeout(flushTimer);
       fetchGeneration += 1; // invalidate any in-flight response
       try { channel?.close(); } catch {}
       try {

@@ -4,16 +4,15 @@
  * The panel is generic: it reads field definitions from the shared catalog
  * and never knows a specific skin's business mapping.
  *
- * Interaction model (ADR-0001, explicit save):
- *   - edits call configClient.preview/previewReset → local live projection,
- *     nothing persisted;
- *   - 保存 (flushNow) is the ONLY write path;
- *   - 还原 (restore) discards the whole preview layer (works offline too);
- *   - 恢复默认 enqueues delete previews for every field — still saved later;
+ * Interaction model (ADR-0003, v2.5 auto-save):
+ *   - edits call configClient.preview/previewReset → local live projection
+ *     plus a debounced auto-flush; the user never saves anything;
+ *   - lastFlushError (from the client) renders the 保存失败 warning strip;
+ *     the next edit clears it;
+ *   - 恢复默认 resets every field to factory defaults and flushes at once;
  *   - the wallpaper section merges built-in choices and the user library in
- *     one grid; library add/remove is immediate (asset path, not saved-gated);
- *   - leaving with unsaved edits is confirmed by the SHELL (five channels),
- *     not here — the panel owns no close button.
+ *     one grid; library add/remove is immediate (asset path, like all writes);
+ *   - the panel owns no close button and no confirmation flows.
  */
 
 import {
@@ -241,8 +240,6 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     const state = useConfigState();
     const schema = getSkinSchema(skinId);
     const headerRef = useRef(null);
-    const [conflicted, setConflicted] = useState(false);
-    const [saveError, setSaveError] = useState(null);
     useEffect(() => { headerRef.current?.focus?.(); }, []);
 
     if (schema === null) return null;
@@ -250,18 +247,10 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     const overrides = configClient.effectiveOverrides(skinId);
     const { values } = mergeValues(skinId, overrides);
     const hasAnyOverride = Object.keys(overrides).length > 0;
-    const canRestore = state.dirtyCount > 0; // purely local — works offline (M2)
-    const canSave = state.dirtyCount > 0 && !writesBlocked;
-
-    const save = async () => {
-      const result = await configClient.flushNow();
-      setConflicted(result?.blocked === "conflict");
-      setSaveError(result?.blocked === "error" ? (result.errorMessage ?? "") : null);
-    };
 
     const fieldRows = schema.fields.map((field) => {
       const value = values[field.key];
-      const setValue = (next) => { setConflicted(false); setSaveError(null); configClient.preview(skinId, field.key, next); };
+      const setValue = (next) => configClient.preview(skinId, field.key, next);
       const common = { field, value, onValue: setValue, disabled: writesBlocked };
       switch (field.type) {
         case "text": return jsx(TextField, { ...common, key: field.key });
@@ -307,26 +296,13 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
         jsx("span", { children: tr("personalization.status.unsupported") }),
       ] }));
     }
-    // Conflict banner: ONLY while still synced — a STORE_READONLY downgrade
-    // renders the read-only strip above instead of dead "save again" advice (③-3).
-    if (conflicted && state.status === "synced") {
-      statusCluster.push(jsx("div", { key: "conflict", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
-        jsx("span", { children: tr("personalization.conflict") }),
-      ] }));
-    }
-    if (saveError !== null) {
-      // A rejected save must never read as "did it save?" — name the failure
-      // and carry the server's reason (field report: silent 400 for days).
+    // Auto-save failure strip (ADR-0003): the client publishes lastFlushError
+    // (server reason or an unresolved conflict); the next edit clears it.
+    if (state.lastFlushError) {
       statusCluster.push(jsx("div", { key: "save-error", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
         jsx("span", { children: tr("personalization.saveFailed") }),
-        saveError === "" ? null : jsx("div", { className: "dsh-skins-pz-muted", children: saveError }),
+        jsx("div", { className: "dsh-skins-pz-muted", children: state.lastFlushError }),
       ] }));
-    }
-    if (state.dirtyCount > 0) {
-      statusCluster.push(jsx("div", {
-        key: "dirty", className: "dsh-skins-pz-status dsh-skins-pz-muted",
-        children: tr("personalization.dirty", { count: state.dirtyCount }),
-      }));
     }
 
     return jsx("div", { className: "dsh-skins-pz", children: [
@@ -340,22 +316,16 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
         jsx("div", { className: "dsh-skins-pz-cluster dsh-skins-pz-cluster-status", children: statusCluster }),
         jsx("div", { className: "dsh-skins-pz-cluster", children: [
           hasAnyOverride ? jsx("button", {
-            type: "button", className: "dsh-skins-pz-btn", disabled: writesBlocked,
+            type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-danger",
+            disabled: writesBlocked,
             onClick: () => {
+              // Reset to factory and flush the deletes right away (ADR-0003):
+              // no preview limbo, the wallpaper/artwork returns instantly.
               for (const field of schema.fields) configClient.previewReset(skinId, field.key);
+              void configClient.flushNow();
             },
             children: tr("personalization.reset"),
           }) : null,
-          jsx("button", {
-            type: "button", className: "dsh-skins-pz-btn", disabled: !canRestore,
-            onClick: () => { setConflicted(false); configClient.restore(); },
-            children: tr("personalization.restore"),
-          }),
-          jsx("button", {
-            type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-primary", disabled: !canSave,
-            onClick: save,
-            children: tr("personalization.save"),
-          }),
         ] }),
       ] }),
     ] });

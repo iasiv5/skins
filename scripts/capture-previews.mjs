@@ -238,11 +238,12 @@ if (gate) {
   await gpage.waitForTimeout(300);
   check(await gpage.locator(".dsh-skins-pop").count() === 0, "Escape closes the combined shell");
 
-  // 3. Explicit-save flow (ADR-0001): edit the slogan → 保存 → the value
-  //    survives a reload, then 恢复默认 → 保存 restores the factory slogan
-  //    (no dirty data is left behind on the release machine, M4). The tab
-  //    title is a static skin asset since v2.4.1 #5, so the slogan carries
-  //    this flow; persistence is asserted through the panel's own synced
+  // 3. Auto-save flow (ADR-0003): edit the slogan → the debounced flush
+  //    persists it with NO save action; it survives a reload. Then
+  //    恢复默认 restores the factory slogan automatically (no dirty data
+  //    is left behind on the release machine, M4). The tab title is a
+  //    static skin asset since v2.4.1 #5, so the slogan carries this
+  //    flow; persistence is asserted through the panel's own synced
   //    input, independent of host DOM.
   const sloganInput = () => gpage.locator('.dsh-skins-pz-panel input[aria-label="标语 (ZH)"]');
   const openPanel = async () => {
@@ -252,17 +253,15 @@ if (gate) {
   };
   await openPanel();
   await sloganInput().fill("验收实验标语");
-  await gpage.locator('.dsh-skins-pz-panel button', { hasText: "保存" }).click();
-  await gpage.waitForTimeout(800);
-  check(await sloganInput().inputValue() === "验收实验标语", "保存 keeps the edited slogan in the synced panel");
+  await gpage.waitForTimeout(1200); // 400ms debounce + PATCH + refetch
+  check(await sloganInput().inputValue() === "验收实验标语", "auto-save keeps the edited slogan in the synced panel");
   await gpage.reload();
   await preparePrivateCapture(gpage);
   await openPanel();
-  check(await sloganInput().inputValue() === "验收实验标语", "保存 persists across reload");
-  // Cleanup: restore defaults and save them back.
+  check(await sloganInput().inputValue() === "验收实验标语", "auto-save persists across reload");
+  // Cleanup: 恢复默认 flushes the factory values automatically.
   await gpage.locator('.dsh-skins-pz-panel button', { hasText: "恢复默认" }).click();
-  await gpage.locator('.dsh-skins-pz-panel button', { hasText: "保存" }).click();
-  await gpage.waitForTimeout(800);
+  await gpage.waitForTimeout(1200);
   await gpage.reload();
   await preparePrivateCapture(gpage);
   await openPanel();

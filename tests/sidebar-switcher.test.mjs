@@ -199,83 +199,58 @@ test("② clean shell: outside click closes, focus returns to the trigger, and N
   assert.equal(h.configClient.calls.flushNow, 0, "no PATCH path may run on close (ADR-0001)");
 });
 
-test("③ dirty shell + outside click: refuse keeps everything, agree discards and closes", async () => {
+test("③ outside click closes directly — no confirmation even with a pending edit (ADR-0003)", async () => {
   const h = makeHarness();
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
   h.scrimInput().props.onChange({ target: { value: "66" } });
   await tick();
-  assert.equal(h.configClient.getState().dirtyCount, 1);
+  assert.equal(h.configClient.getState().dirtyCount, 1, "edit pending (the debounce owns it)");
 
-  h.dom.setConfirm(false);
   h.dom.fireOutsidePointer();
   await tick();
-  assert.equal(h.dom.confirms.length, 1, "dirtyLeave confirm shown");
-  assert.notEqual(h.shell(), null, "refusal keeps the shell open");
-  assert.equal(h.configClient.calls.restore, 0, "refusal keeps the previews");
-  assert.equal(h.configClient.getState().dirtyCount, 1);
-
-  h.dom.setConfirm(true);
-  h.dom.fireOutsidePointer();
-  await tick();
-  assert.equal(h.configClient.calls.restore, 1, "agreement discards via restore()");
-  assert.equal(h.shell(), null, "shell closes after the discard");
-  assert.equal(h.configClient.calls.flushNow, 0, "leaving never persists (R1)");
+  assert.equal(h.shell(), null, "shell closed");
+  assert.equal(h.dom.confirms.length, 0, "no discard dialog — auto-save owns persistence");
+  assert.ok(h.dom.focused.includes("switcher-trigger"), "focus lands on the persistent trigger");
+  assert.equal(h.configClient.calls.flushNow, 0, "closing never flushes; the debounce does");
 });
 
-test("④ Escape shares the same confirmed path", async () => {
+test("④ Escape closes directly — no confirmation (ADR-0003)", async () => {
   const h = makeHarness();
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
   h.scrimInput().props.onChange({ target: { value: "66" } });
   await tick();
-  h.dom.setConfirm(true);
   h.dom.fireEscape();
   await tick();
-  assert.equal(h.dom.confirms.length, 1);
-  assert.equal(h.configClient.calls.restore, 1);
-  assert.equal(h.shell(), null, "Escape closes after discard");
+  assert.equal(h.shell(), null, "Escape closes");
+  assert.equal(h.dom.confirms.length, 0, "no dialog");
 });
 
-test("⑤ dirty gear re-click: agree collapses the panel, shell stays", async () => {
+test("⑤ gear re-click collapses the panel directly (no confirm, ADR-0003)", async () => {
   const h = makeHarness();
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
-  h.scrimInput().props.onChange({ target: { value: "66" } });
-  await tick();
-  h.dom.setConfirm(true);
   h.gearButton("tgcf").props.onClick();
   await tick();
-  assert.equal(h.configClient.calls.restore, 1, "collapse discards on agree");
-  assert.equal(h.panelColumn(), null, "panel column collapsed");
+  assert.equal(h.panelColumn(), null, "panel collapsed");
   assert.notEqual(h.shell(), null, "shell itself stays open");
+  assert.equal(h.dom.confirms.length, 0, "no confirmation on collapse");
 });
 
-test("⑥ dirty target switch to another gear: refuse keeps active skin AND panel target (③-2)", async () => {
+test("⑥ gear target switch works directly (no dirty confirm, ADR-0003)", async () => {
   const h = makeHarness();
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
-  h.scrimInput().props.onChange({ target: { value: "66" } });
-  await tick();
-
-  h.dom.setConfirm(false);
   h.gearButton("openbmc").props.onClick();
   await tick();
-  assert.equal(h.dom.confirms.length, 1);
-  assert.equal(h.getActive(), "tgcf", "refusal must not switch the active skin (guard runs BEFORE select)");
-  assert.notEqual(h.panelColumn(), null, "panel stays open on tgcf");
-  assert.ok(h.heading().props.children.includes("TGCF"), "panel target unchanged");
-
-  h.dom.setConfirm(true);
-  h.gearButton("openbmc").props.onClick();
-  await tick();
-  assert.equal(h.configClient.calls.restore, 1);
-  assert.equal(h.getActive(), "openbmc", "agreement switches target");
-  assert.ok(h.heading().props.children.includes("OpenBMC"), "panel now targets openbmc");
+  assert.equal(h.getActive(), "openbmc", "active follows the gear");
+  assert.ok(h.heading().props.children.includes("OpenBMC"), "panel retargeted");
+  assert.equal(h.dom.confirms.length, 0, "no confirmation");
 });
 
 test("⑦ panel open: card click follows the panel target (v2.4.1, reverses Q48)", async () => {
@@ -301,31 +276,18 @@ test("⑦ panel open: card click follows the panel target (v2.4.1, reverses Q48)
   assert.equal(h.dom.confirms.length, 0, "still clean → still no confirm");
 });
 
-test("⑧ dirty card target switch: guard BEFORE select; refuse keeps active+panel, agree follows (③-2)", async () => {
+test("⑧ card switch with a pending edit: direct switch, no confirm (ADR-0003)", async () => {
   const h = makeHarness();
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
   await tick();
   h.scrimInput().props.onChange({ target: { value: "66" } });
   await tick();
-  assert.equal(h.configClient.getState().dirtyCount, 1);
-
-  h.dom.setConfirm(false);
   h.cardButton("uefi-harness").props.onClick();
   await tick();
-  assert.equal(h.dom.confirms.length, 1, "card click with dirty panel asks first");
-  assert.equal(h.getActive(), "tgcf", "refusal must not switch the active skin (guard runs BEFORE select)");
-  assert.ok(h.heading().props.children.includes("TGCF"), "refusal keeps the panel target");
-  assert.equal(h.configClient.calls.restore, 0, "refusal keeps the previews");
-  assert.equal(h.configClient.getState().dirtyCount, 1);
-
-  h.dom.setConfirm(true);
-  h.cardButton("uefi-harness").props.onClick();
-  await tick();
-  assert.equal(h.configClient.calls.restore, 1, "agreement discards via restore()");
-  assert.equal(h.getActive(), "uefi-harness", "agreement switches the skin");
-  assert.ok(h.heading().props.children.includes("UEFI"), "panel follows after the discard");
-  assert.equal(h.configClient.calls.flushNow, 0, "leaving never persists (R1)");
+  assert.equal(h.getActive(), "uefi-harness", "direct switch");
+  assert.ok(h.heading().props.children.includes("UEFI"), "panel follows");
+  assert.equal(h.dom.confirms.length, 0, "no discard dialog — the debounce owns persistence");
 });
 
 test("⑨ panel closed: card click is a plain switch, no confirm", async () => {
