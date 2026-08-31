@@ -1,6 +1,6 @@
-# dsh-skins 1.0.0 设计文档 v2.4.1：声明式个性化框架（精简版）+ 「天官赐福 · 百无禁忌」皮肤
+# dsh-skins 1.0.0 设计文档 v2.5：声明式个性化框架（精简版）+ 「天官赐福」皮肤
 
-> 状态：**v2.4.1**（精简轮 v2.4 + 实测修订 #1）。v2.4（Q35–Q53 + 三轮计划评审）记录五项产品裁决：字段精简与 scrim 单值化（§10）、显式保存模型（§7.1，ADR-0001）、主题包机制移除（§8/§9 → §17，ADR-0002）、加载时存量规范化（§5.5）、粘连外壳与五通道脏态确认（§7.2）。v2.4.1 修订 §7.2：面板展开时点皮肤**卡片** = 面板目标随行切换（取代 Q48 的"仅切肤"半则，§19）。v2.3 的 SkinEffects 接口形状（§3a）与 §9a 决策不变。
+> 状态：**v2.5**（实测修订轮）。v2.4（Q35–Q53 + 三轮计划评审）记录五项产品裁决：字段精简与 scrim 单值化（§10）、显式保存模型（§7.1，ADR-0001，**v2.5 经 ADR-0003 逆转**）、主题包机制移除（§8/§9 → §17，ADR-0002）、加载时存量规范化（§5.5）、粘连外壳（§7.2）。v2.4.1 记录七项实测修订（§19：卡片随行切换、面板滚动、六列壁纸、展示文案、标签页标题静态化、删除反馈与快照通知、保存失败上浮）。**v2.5：修改即自动保存（ADR-0003，取代 ADR-0001）——「保存/还原」按钮与全部脏态确认移除**（§7.1/§7.2/§19）。v2.3 的 SkinEffects 接口形状（§3a）与 §9a 决策不变。
 > 版本目标：单版本 **1.0.0** 全量交付，每个 commit 保持 `pnpm run check` 绿色；发布流程见 §16（preflight → tag → tag workflow → Release）。
 
 ---
@@ -26,7 +26,7 @@
 | 缓存 | `Cache-Control: private, max-age=31536000, immutable`（Y8） |
 | ZIP | ~~store-only + 全部结构约束（Y1）~~ **经 ADR-0002 随主题包移除（v2.4）** |
 | 发布流程 | preflight CI → 打 tag → tag workflow 复验 → job 级 `contents: write` 自动建 Release（Y7） |
-| 显式保存 | 编辑仅本地预览，「保存」是唯一落库路径；「还原」清预览层（离线可用）；离开编辑面的五条通道统一脏态确认（Q37–Q41/Q49，ADR-0001） |
+| 自动保存 | **修改即落库（v2.5，ADR-0003 取代 ADR-0001 显式保存）**：字段变更经 400ms 防抖合并为一个 PATCH 自动写入并跨标签页同步；「保存/还原」按钮与五条脏态确认通道移除；「恢复默认」立即生效并自动保存 |
 | 主题包 | **整体移除**（§8/§9 → §17；ADR-0002）：客户端 UI、host 路由、store 事务、zip.js、staging 死设施全删 |
 | 字段精简 | tgcf 10→6 字段：删 favicon/accent/gold/bubbleColor；scrim 单值化（默认 30）；颜色与 favicon 静态化为皮肤身份（Q35） |
 | 存量规范化 | 加载时按当前 catalog 剔除未知键、校验不通过值与孤儿段（§5.5，Q36）；"未知键永久保留"原则就此翻转 |
@@ -170,15 +170,15 @@ builtin 资产规则：`allowedUserMime` 永不含 SVG；builtin SVG 仅经编�
 
 ## 7. Client
 
-### 7.1 启动状态机与显式保存模型（v2.4，ADR-0001）
+### 7.1 启动状态机与自动保存模型（v2.5，ADR-0003）
 
 config client 四态不变：`loading / synced / offline-failed / unsupported-readonly`。
 
-- `loading`：面板可预览但**禁止持久化**（控件禁用 + "同步中"标识）
-- `offline-failed`：显示"配置尚未同步" + 重试按钮；保存/上传/删除被拒；绝不标"已保存"；**「还原」离线可用**（纯本地操作）
+- `loading`：面板控件禁用 + "同步中"标识，变更不可持久化
+- `offline-failed`：显示"配置尚未同步" + 重试按钮；上传/删除/变更落库被拒；绝不标"已保存"
 - `unsupported-readonly`：可查看不可写
-- **保存语义（v2.3 的 400ms 防抖自动落库与"关弹层即冲刷"整体废除）**：`preview/previewReset` 只写本地预览层并即时投影；「保存」(`flushNow`) 是唯一写路径；「还原」(`restore`) 清空预览层回到已同步值；离开编辑面的五条通道（点空白 / 换肤按钮 / Esc / 齿轮收面板 / 面板目标切换）统一 `dirtyLeave` 确认，同意 = `restore()` 丢弃后继续原动作，拒绝 = 状态原样保持（守卫在 `runtime.select` 之前）
-- 409 分 flavor：`STORE_READONLY` → 只读降级且不 refetch；revision 冲突 → 先 refetch（预览保留、revision 更新）再返回冲突，用户再点保存即以新 baseRevision 提交；冲突横幅仅 `synced` 态渲染
+- **自动保存语义（v2.5，ADR-0003）**：`preview/previewReset` 写本地预览层并即时投影，**400ms 防抖后把窗口内的全部变更合并为一个 PATCH 自动落库**——用户无任何保存操作；「保存」「还原」按钮删除（预览层仅是投影管线的内部概念，不再暴露为用户状态）；「恢复默认」= 全字段 previewReset 后立即冲刷。防抖在途时关闭弹层无碍——config client 是会话级全局单例，与弹层生死无关（v2.3"关弹层即冲刷"的时序隐患不复存在）
+- 409 分 flavor：`STORE_READONLY` → 只读降级且不 refetch；revision 冲突 → **先 refetch 取新 baseRevision，再自动重试一次**（v2.5：无"再点保存"步骤），仍失败才上浮警示条；非 409 失败警示条携带服务器原因（实测 #7 机制），下次编辑自动清除
 - fetch 晚到时本地 dirty preview 字段不被覆盖；请求序号防乱序；dispose 后到达响应丢弃；fetch 晚到但已切肤 → 丢弃
 - **快照落地即通知（v2.4.1）**：`refetch()` 三处成功分支（synced/unsupported/recovery）应用新快照后无条件 `emit()`——同状态下 `setStatus` 不触发通知，仅靠它会静默换掉快照、饿死全部订阅者（实测 #4 续报：删除成功而图库网格不更新）；状态转换期的双发无害
 
@@ -188,9 +188,9 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 `dsh-skins:active-changed` / `dsh-skins:config-changed` + BroadcastChannel + focus 兜底不变。
 
-- **粘连外壳（Q44/Q46）**：换肤弹层升级为单一 dialog：左列 `.dsh-skins-pop-main`（360px，外观 + 皮肤列表 + 更新栏）+ 右列 `.dsh-skins-pz-panel`（**700px 基准，`flex:0 1` 可收缩 + `overflow-x:hidden` 兜底**，`role=region`）；总宽 `min(1105px, 100vw-24px)`（v2.4.1 #3，原 880/520 组合两列实占 895px 必然横向溢出）；壁纸网格**一行 6 张**（~110×83，内建与图库各一排）；标语 zh/en 输入框并排一行（宽面板下堆叠既难看又费高）；**视口 <904px 上下堆叠**（网格回落 4 列；壳关闭三通道 + 面板收起/目标切换，合计五条脏态确认通道）。面板滑入 200ms ease-out，`prefers-reduced-motion` 直接呈现；关闭无出场动画。**壳高钳制（v2.4.1，实测问题 #2）**：`maxHeight = max(220, innerHeight − 底锚点 − 12)` 由 JS 内联给出——CSS `100vh−24px` 不扣锚点会让壳顶滑出屏幕且内容不可达不可滚；宽模式右列为**独立滚动区**（`overflow-y:auto` + `overscroll-behavior:contain`，左列常驻不动），<904px 堆叠态滚动交还整壳。
-- **面板（Q47/Q50/Q51）**：壁纸为唯一合并区（内置精选 + 我的图片同网格、角标删除、上传、清空图库带影响清单确认——确认文案列全部受影响 `皮肤 · 字段` 与不可恢复警示，首个失败即停并刷新剩余）；底部固定操作条 `position:sticky`：状态簇（同步中/离线+重试/只读/恢复模式/冲突[仅 synced]/未保存计数）在左，「恢复默认」「还原」「保存」在右；无「返回」按钮、无主题包 UI。
-- 卡片点击 = 切换当前皮肤；**面板展开时**点卡片 = 面板目标随行切换（目标皮肤不可个性化则经同一确认收起面板），脏态确认守卫置于 `runtime.select` 之前（**v2.4.1 修订**，取代 Q48 的"仅切肤"半则）；面板收起时点卡片 = 仅切肤（预览层必空，无需确认）。齿轮点击 = 展开或收起面板目标。焦点：面板展开→面板标题；壳关闭→换肤按钮（齿轮随壳卸载）；齿轮收面板→焦点还齿轮。不变式：面板展开期间**面板目标 ≡ 当前皮肤**（不存在 active=B/面板=A 半态）。
+- **粘连外壳（Q44/Q46）**：换肤弹层升级为单一 dialog：左列 `.dsh-skins-pop-main`（360px，外观 + 皮肤列表 + 更新栏）+ 右列 `.dsh-skins-pz-panel`（**700px 基准，`flex:0 1` 可收缩 + `overflow-x:hidden` 兜底**，`role=region`）；总宽 `min(1105px, 100vw-24px)`（v2.4.1 #3，原 880/520 组合两列实占 895px 必然横向溢出）；壁纸网格**一行 6 张**（~110×83，内建与图库各一排）；标语 zh/en 输入框并排一行（宽面板下堆叠既难看又费高）；**视口 <904px 上下堆叠**（网格回落 4 列；关闭/收起/切换全部直接执行——v2.5 自动保存后无脏状态，无确认弹窗）。面板滑入 200ms ease-out，`prefers-reduced-motion` 直接呈现；关闭无出场动画。**壳高钳制（v2.4.1，实测问题 #2）**：`maxHeight = max(220, innerHeight − 底锚点 − 12)` 由 JS 内联给出——CSS `100vh−24px` 不扣锚点会让壳顶滑出屏幕且内容不可达不可滚；宽模式右列为**独立滚动区**（`overflow-y:auto` + `overscroll-behavior:contain`，左列常驻不动），<904px 堆叠态滚动交还整壳。
+- **面板（Q47/Q50/Q51）**：壁纸为唯一合并区（内置精选 + 我的图片同网格、角标删除、上传、清空图库带影响清单确认——确认文案列全部受影响 `皮肤 · 字段` 与不可恢复警示，首个失败即停并刷新剩余）；底部固定操作条 `position:sticky`：状态簇（同步中/离线+重试/只读/恢复模式/保存失败警示）在左，「恢复默认」在右（v2.5：「保存」「还原」按钮删除——变更自动落库，见 §7.1）；无「返回」按钮、无主题包 UI。
+- 卡片点击 = 切换当前皮肤；**面板展开时**点卡片 = 面板目标随行切换（目标皮肤不可个性化则收起面板）（v2.4.1 修订取代 Q48；**v2.5 起无脏态确认、守卫删除，直接执行**）。齿轮点击 = 展开或收起面板目标。焦点：面板展开→面板标题；壳关闭→换肤按钮（齿轮随壳卸载）；齿轮收面板→焦点还齿轮。不变式：面板展开期间**面板目标 ≡ 当前皮肤**（不存在 active=B/面板=A 半态）。
 
 ## 8. ZIP 结构约束（**经 ADR-0002 移除**）
 
@@ -214,30 +214,30 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 **v2.4 精简注记（Q35）**：favicon/accent/gold/bubbleColor 四字段删除。皮肤视觉身份不随之丢失——tgcf `project()` 将原 catalog 默认值（brand-primary #C3272B/#E0564A、鎏金 #C9A227/#D4AF37、气泡 #C3272B/#8E2A2F、灯笼 favicon）静态烘焙为皮肤常量；SkinEffects 契约（§3/§3a）不变。
 
-builtin 资产登记：`lanterns`（祥云灯笼阵，默认壁纸）、`butterflies`（银蝶群）、`mountains`（金线山水）、`maples`（红枫落雨）、`lantern-favicon`（红灯笼 favicon，SVG，仅 builtin、静态引用）。motif select 已删除（Y10）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
+builtin 资产登记（v2.4.1 #6 起）：`crimson`（花城 · 银蝶灯笼，**默认壁纸**，AI 生成画作）、`pale`（谢怜 · 云海宫阙，AI 生成画作）、`lantern-favicon`（红灯笼 favicon，SVG，仅 builtin、静态引用）。四个代码纹样与 motif select 已删除（Y10/#6）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
 
 旧皮肤：`openbmc`（bodyAttr `dshOpenbmcSkin` 不变）与 `uefi-harness`（`dshUefiHarness`）仅开放 wallpaper 字段（§9a 终态）；**默认投影必须与 0.6.0 行为逐字节等价**（列入兼容测试）。
 
 ## 11. Corner cases 清单（v2 基础上修订）
 
-v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试，跨命名空间结构隔离）；8（孤儿 blob 仅在非恢复态下 GC，存活=library 成员）；9（损坏→恢复分支 A，不破坏性 GC；版本过新→分支 B 零写入）。新增：14 掉电上限=state 丢失且配置未必可恢复、blob 保留可重挂（5.2/5.3）；15 未同步面板禁止持久化（7.1）；18 state 缺失但 assets 非空 → 恢复分支（5.3）；19 三层回退语义（§3）；20 staticCss 预作用域、用户值禁入 CSS 文本（§3）；21 加载时存量规范化仅 normal 态执行、剔除即 revision+1（5.5）；22 五通道脏态确认守卫先于 runtime.select（7.2）。【v2.4 删除：13 ZIP 结构约束、16 favicon 字段级约束、17 导入幂等——随主题包机制移除（ADR-0002）】
+v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试，跨命名空间结构隔离）；8（孤儿 blob 仅在非恢复态下 GC，存活=library 成员）；9（损坏→恢复分支 A，不破坏性 GC；版本过新→分支 B 零写入）。新增：14 掉电上限=state 丢失且配置未必可恢复、blob 保留可重挂（5.2/5.3）；15 未同步面板禁止持久化（7.1）；18 state 缺失但 assets 非空 → 恢复分支（5.3）；19 三层回退语义（§3）；20 staticCss 预作用域、用户值禁入 CSS 文本（§3）；21 加载时存量规范化仅 normal 态执行、剔除即 revision+1（5.5）；22 ~~五通道脏态确认守卫先于 runtime.select~~（v2.5 随 ADR-0003 移除——无脏状态即无守卫）。【v2.4 删除：13 ZIP 结构约束、16 favicon 字段级约束、17 导入幂等——随主题包机制移除（ADR-0002）】
 
 ## 12. 测试计划（Y5 全收）
 
 在 v2 矩阵上追加：
 
-- `tests/config-client.test.mjs`：四态状态机全迁移、fetch 晚到×切肤/dispose/乱序、dirty preview 保护、unsupported 只读、BroadcastChannel 去回声；**v2.4**：无保存不发 PATCH、restore 清预览、409 双 flavor（readonly 不 refetch / revision 冲突 refetch 后重试成功）
+- `tests/config-client.test.mjs`：四态状态机全迁移、fetch 晚到×切肤/dispose/乱序、dirty preview 保护、unsupported 只读、BroadcastChannel 去回声；**v2.5**：变更经 400ms 防抖自动发 PATCH（窗口内合并）、409 自动 refetch+重试一次、非 409 失败 errorMessage 上浮
 - runtime：`updateActive` 同 id 热更新、第 N 效果失败前 N−1 全清理、替换失败恢复旧 effects、bodyAttr 实际 DOM 属性、title 无双分隔符
 - 兼容：openbmc/uefi 默认投影 ≡ 0.6.0、state 损坏后 assets 数量不减、unsupported configVersion 后 assets 数量不减、库中未引用图片不被 GC、UUID 生成值与全部正则一致
 - `smoke-test.cjs` 重构：children 位置断言改语义节点定位（v2.4 再降入 `.dsh-skins-pop-main`）
-- **v2.4**：`tests/fake-react.mjs` 共享桩（持久 hook 帧/deps-aware effect/useCallback 记忆化/ref 接线）；`tests/personalization-panel.test.mjs` 走面板公开路径（3 皮肤×双态、保存/还原/清空图库/仅 synced 冲突横幅）；`tests/sidebar-switcher.test.mjs` 走五通道公开路径（含拒绝分支 active 不变、R1 无 PATCH 断言）；store 加载规范化三分支（剔除+落盘 / 干净零写入 / 恢复与未来版零写入）
-- capture-previews 输出名参数化（`--skin tgcf` 不再覆盖 openbmc 图）；**v2.4 gate**：保存流持久化证据 + 恢复默认清理步 + 静态 favicon
+- **v2.4**：`tests/fake-react.mjs` 共享桩（持久 hook 帧/deps-aware effect/useCallback 记忆化/ref 接线）；`tests/personalization-panel.test.mjs` 走面板公开路径（3 皮肤×双态、恢复默认、清空图库、保存失败警示条、无保存/还原按钮）；`tests/sidebar-switcher.test.mjs` 走壳公开路径（开关/卡片随行/无确认弹窗断言）；store 加载规范化三分支（剔除+落盘 / 干净零写入 / 恢复与未来版零写入）
+- capture-previews 输出名参数化（`--skin tgcf` 不再覆盖 openbmc 图）；**v2.5 gate**：编辑→自动落库→刷新持久证据 + 恢复默认清理步 + 静态 favicon
 - 恢复模式分支测试（三轮 R）：分支 A（损坏/空/缺失+assets 非空）断言 quarantine 仅登记不移动、恢复提交前 assets 数量不减；分支 B（configVersion 过新）断言零写入——文件 mtime/目录结构不变；`state.json` 缺失+assets 非空 ≠ 首次初始化
 - 三层回退测试（三轮 Y1）：非法 override 只回退该字段；projector/skin.project 抛错整套 defaults-only；defaults-only 失败 fail-closed 恢复上一套 effects / 首挂回退 official
 
 ## 13. 浏览器验收（Y4，事实修正后）
 
-**承认 v2 事实错误**：仓库已有 `playwright-core@1.62.1`（devDependencies）且 `capture-previews.mjs` 已驱动 headless Chromium。修正表述：**仓库已有 Playwright 驱动与截图脚本，但 CI 无 DSH GUI/浏览器编排；1.0.0 不把完整 E2E 纳入 CI，以本地半自动 release gate 替代**。零新增依赖扩展本地脚本断言：齿轮键盘可达、面板粘连展开、Esc 整壳关闭、**保存→换装→刷新持久→恢复默认→保存→复原（显式保存流证据 + 无残留清理）**、静态 favicon、reduced-motion、旧皮肤默认投影等价、双标签页同步、0.6.0→1.0.0 升级路径（加载规范化演练）。gate 写明步骤/期望/失败即禁发/执行证据留存。
+**承认 v2 事实错误**：仓库已有 `playwright-core@1.62.1`（devDependencies）且 `capture-previews.mjs` 已驱动 headless Chromium。修正表述：**仓库已有 Playwright 驱动与截图脚本，但 CI 无 DSH GUI/浏览器编排；1.0.0 不把完整 E2E 纳入 CI，以本地半自动 release gate 替代**。零新增依赖扩展本地脚本断言：齿轮键盘可达、面板粘连展开、Esc 整壳关闭、**编辑→自动落库→刷新持久→恢复默认→复原（自动保存流证据 + 无残留清理）**、静态 favicon、reduced-motion、旧皮肤默认投影等价、双标签页同步、0.6.0→1.0.0 升级路径（加载规范化演练）。gate 写明步骤/期望/失败即禁发/执行证据留存。
 
 ## 14. CI 与发布（Y7 修正）
 
@@ -253,7 +253,7 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 - [ ] 两标签页独立字段并发编辑不互相覆盖
 - [ ] 删除任一步骤崩溃可恢复（故障注入）
 - [ ] 切肤/回官方/热更新/dispose 无 token/DOM 残留
-- [ ] 显式保存流端到端：预览不落库、保存唯一写路径、五通道脏态确认、还原离线可用、409 双 flavor（ADR-0001）
+- [ ] 自动保存流端到端：变更即落库（400ms 防抖合并）、409 自动 refetch+重试一次、失败警示条、无保存/还原/确认 UI（ADR-0003）
 - [ ] 清空图库确认列全量影响清单，首个失败即停并刷新剩余
 - [ ] `openbmc` id 全文一致
 - [ ] node 单测 + host 集成 + 本地半自动 gate 全过
@@ -291,7 +291,7 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 
 ## 17. 不做清单（v2 + 增补）
 
-v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8→已移除）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。**v2.4 增补**：主题包机制整体移除（§8/§9 原文归档 v2.3 历史，ADR-0002；含其流式落盘升级路径——多用户/分享场景重现时须重新设计评审而非复活旧实现）、拖拽上传、壁纸填充方式（cover/contain/fill）、壁纸位置（上/中/下）、显示/隐藏壁纸开关、多文件同时上传（Q43 裁决不做；参考实现 dsh-custom-skin 有之，本插件保持精简）。**v2.4.1 增补**：标签页标题个性化（实测裁决 #5 移除字段；标题品牌段由皮肤静态提供，未来皮肤同此，§10/§0）；四个代码绘制壁纸纹样移除（用户裁决 #6，AI 画作取代，§18/§19）、壁纸按主题成对默认不做（字段模型保持 image×single，留 1.x）。
+v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8→已移除）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。**v2.4 增补**：主题包机制整体移除（§8/§9 原文归档 v2.3 历史，ADR-0002；含其流式落盘升级路径——多用户/分享场景重现时须重新设计评审而非复活旧实现）、拖拽上传、壁纸填充方式（cover/contain/fill）、壁纸位置（上/中/下）、显示/隐藏壁纸开关、多文件同时上传（Q43 裁决不做；参考实现 dsh-custom-skin 有之，本插件保持精简）。**v2.4.1 增补**：标签页标题个性化（实测裁决 #5 移除字段；标题品牌段由皮肤静态提供，未来皮肤同此，§10/§0）；四个代码绘制壁纸纹样移除（用户裁决 #6，AI 画作取代，§18/§19）、壁纸按主题成对默认不做（字段模型保持 image×single，留 1.x）。**v2.5 增补**：手动保存/还原按钮与全部脏态确认弹窗移除（ADR-0003 逆转 ADR-0001；防抖自动落库取代，§7.1）。
 
 ## 18. 商标与非关联声明（v2.4.1 修订）
 
@@ -322,6 +322,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.4.1 修订（实测问题 #7：保存静默失败）**：三滑块拉最低后保存无报错、关闭却弹放弃确认——两层叠加。①**宿主进程陈旧**（T7 分离式重启后未再重启）：运行中的校验目录落后于共享 catalog 十余轮变更（旧 scrim 为亮暗对象，单值数字 0 → BAD_SHAPE；titleBrand 旧字段仍被接受），诊断中已确认并按既有流程重启宿主解决；教训：**改 src/host/** 或共享 catalog 后必须分离式重启，否则宿主按旧契约拒绝新客户端的合法写入**。②客户端把非 409 的保存失败整体吞掉（blocked:"error" 无任何 UI）——修复：flushNow 解析响应体携带 `errorMessage` 上浮，面板渲染「保存失败，请重试」警示条（含服务器原因，再编辑即清除），测试钉死贯通。
 
 **v2.4.1 修订（用户裁决 #6）**：出厂壁纸换装——四个代码绘制 SVG 纹样（祥云灯笼阵/银蝶群/金线山水/红枫落雨）整体移除，改为产品作者提供的两幅 AI 生成粉丝画作（豆包AI）：`builtin:tgcf:crimson`（花城 · 银蝶灯笼，**出厂默认**）与 `builtin:tgcf:pale`（谢怜 · 云海宫阙）。技术通道：1920px WebP q78 内嵌 data-URI（共 +218KB），与 favicon 同为 embed-in-JS、零 asset loader（`src/client/skins/tgcf/wallpapers.js`，头注含源 sha256）。存量旧纹样引用由加载规范化按未知内建键剔除（BAD_ASSET，重选即可）。词典：4 个纹样标签键 → 2 个画作键，「内置纹样」→「内置画作」。§18 声明同步改写；站点图标与飘蝶装饰仍为原创 SVG。壁纸"按主题成对默认"（亮=谢怜/暗=花城）不做——image×single 模型保持，留 1.x。
+
+**v2.5 修订（用户裁决 #8：修改即自动保存）**：实测一周后裁决显式保存的仪式成本（找保存按钮、关闭弹窗确认、脏状态心智）高于其收益，且"保存静默失败"类缺陷（#7）正是显式模型特有的处理盲区。逆转 ADR-0001（ADR-0003）：变更经 400ms 防抖合并为一个 PATCH 自动落库；「保存」「还原」删除；「恢复默认」立即生效并自动保存；五通道脏态确认全部移除（点空白/换肤按钮/Esc/收面板/切目标直接执行）；409 自动 refetch + 重试一次；失败警示条沿用 #7 机制。防抖与弹层解耦（client 全局单例），v2.3"关弹层即冲刷"时序隐患不复存在。与切肤行为对齐：切肤本就点击即生效并持久化，无保存步骤。Y6 语义二次翻转（v2.3 自动 → v2.4 显式 → v2.5 自动）如实记录于 ADR-0003。
 
 ## 20. 终审记录
 
