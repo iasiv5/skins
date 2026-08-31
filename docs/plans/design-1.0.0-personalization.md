@@ -187,7 +187,7 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 `dsh-skins:active-changed` / `dsh-skins:config-changed` + BroadcastChannel + focus 兜底不变。
 
-- **粘连外壳（Q44/Q46）**：换肤弹层升级为单一 dialog：左列 `.dsh-skins-pop-main`（360px，外观 + 皮肤列表 + 更新栏）+ 右列 `.dsh-skins-pz-panel`（520px，`role=region`）；总宽 `min(880px, 100vw-24px)`；**视口 <904px 上下堆叠**（壳关闭三通道 + 面板收起/目标切换，合计五条脏态确认通道）。面板滑入 200ms ease-out，`prefers-reduced-motion` 直接呈现；关闭无出场动画。
+- **粘连外壳（Q44/Q46）**：换肤弹层升级为单一 dialog：左列 `.dsh-skins-pop-main`（360px，外观 + 皮肤列表 + 更新栏）+ 右列 `.dsh-skins-pz-panel`（520px，`role=region`）；总宽 `min(880px, 100vw-24px)`；**视口 <904px 上下堆叠**（壳关闭三通道 + 面板收起/目标切换，合计五条脏态确认通道）。面板滑入 200ms ease-out，`prefers-reduced-motion` 直接呈现；关闭无出场动画。**壳高钳制（v2.4.1，实测问题 #2）**：`maxHeight = max(220, innerHeight − 底锚点 − 12)` 由 JS 内联给出——CSS `100vh−24px` 不扣锚点会让壳顶滑出屏幕且内容不可达不可滚；宽模式右列为**独立滚动区**（`overflow-y:auto` + `overscroll-behavior:contain`，左列常驻不动），<904px 堆叠态滚动交还整壳。
 - **面板（Q47/Q50/Q51）**：壁纸为唯一合并区（内置精选 + 我的图片同网格、角标删除、上传、清空图库带影响清单确认——确认文案列全部受影响 `皮肤 · 字段` 与不可恢复警示，首个失败即停并刷新剩余）；底部固定操作条 `position:sticky`：状态簇（同步中/离线+重试/只读/恢复模式/冲突[仅 synced]/未保存计数）在左，「恢复默认」「还原」「保存」在右；无「返回」按钮、无主题包 UI。
 - 卡片点击 = 切换当前皮肤；**面板展开时**点卡片 = 面板目标随行切换（目标皮肤不可个性化则经同一确认收起面板），脏态确认守卫置于 `runtime.select` 之前（**v2.4.1 修订**，取代 Q48 的"仅切肤"半则）；面板收起时点卡片 = 仅切肤（预览层必空，无需确认）。齿轮点击 = 展开或收起面板目标。焦点：面板展开→面板标题；壳关闭→换肤按钮（齿轮随壳卸载）；齿轮收面板→焦点还齿轮。不变式：面板展开期间**面板目标 ≡ 当前皮肤**（不存在 active=B/面板=A 半态）。
 
@@ -308,6 +308,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.3 增补（实现评审第二轮 N1/N2）**：runtime 挂载改回 teardown-first（共享节点身份下 build-then-swap 会拆毁活动皮肤——生产每次加载必触发的发布级回归），失败恢复 = 纯函数重投影旧皮肤；styleTag 复用必刷新内容；readStateFile 在 shape 校验前先做 configVersion 探测（shape 变化的未来版 → unsupported 零写入）；contextActive 接入 runtime.active；齿轮补 DOM id；verify-release 在 CI 锚定 GITHUB_REPOSITORY；Y1 登记入 §17；发版手工清单落为 `docs/release-checklist-1.0.0.md`（含 README 截图、双标签页、升级演练等 tag 前置条件）。
 
 **v2.4.1 修订（实测问题 #1）**：粘连外壳内面板展开时，点另一皮肤**卡片**原按 Q48 仅切换当前皮肤、面板停留原皮肤——实测造成"面板还是上一个皮肤"的割裂观感，且脏态下该路径不经任何确认直接 `runtime.select`，恰是 ③-2 要防的 active=B/面板=A 半态。修订为：面板展开时点卡片 = 面板目标随行切换（目标不可个性化则经同一确认收起面板），守卫置于 `runtime.select` 之前，确立"面板展开期间面板目标 ≡ 当前皮肤"不变式。五通道集合不变（该路径并入"面板目标切换"通道）；齿轮语义、Q48 的齿轮半则不变。
+
+**v2.4.1 修订（实测问题 #2）**：面板滚动与样式补全。三层叠加缺陷——①壳以底锚点向上生长而 CSS `max-height:100vh−24px` 不扣锚点偏移，矮视口下壳顶滑出屏幕且壳内无溢出，内容既看不见也滚不到；②T5 重写时 7 个面板类（`pz-cell`/`pz-del`/`pz-rowbtns`/`pz-actions`/`pz-cluster`/`pz-primary`/`pz-danger`）写了 JSX 未写 CSS——图库"×"删除钮被堆在缩略图下方（每行多占 ~26px，设计语义是角标删除）、Q50 的 sticky 常驻操作条实际未落地；③宽模式面板列无自身滚动区，内容以 `overflow:visible` 溢出壳圆角边框。修复：壳高 JS 钳制（见 §7.2）；补齐 7 类样式（角标删除、sticky 操作条、状态簇纵排、主/危险按钮强调）；宽模式面板列独立滚动、堆叠态整壳滚动。
 
 ## 20. 终审记录
 

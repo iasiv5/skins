@@ -8,29 +8,31 @@ import test from "node:test";
 import { installSidebarSwitcher } from "../src/client/sidebar-switcher.js";
 import { createFakeReact, jsx, flatten } from "./fake-react.mjs";
 
-function makeDom() {
+function makeDom(viewportHeight = 900) {
   const docListeners = new Map();
   const winListeners = new Map();
   const focused = [];
   const confirms = [];
+  const created = [];
   let confirmResult = true;
   globalThis.document = {
     head: { appendChild: () => {}, removeChild: () => {} },
     body: { appendChild: () => {} },
     getElementById: (id) => (id.endsWith("-gear") ? { focus: () => focused.push(id) } : null),
-    createElement: () => ({ dataset: {}, appendChild: () => {}, remove() {} }),
+    createElement: () => { const el = { dataset: {}, appendChild: () => {}, remove() {} }; created.push(el); return el; },
     addEventListener: (kind, fn) => docListeners.set(kind, fn),
     removeEventListener: () => {},
   };
   globalThis.window = {
     innerWidth: 1400,
+    innerHeight: viewportHeight,
     confirm: (text) => { confirms.push(text); return confirmResult; },
     addEventListener: (kind, fn) => winListeners.set(kind, fn),
     removeEventListener: () => {},
     dispatchEvent: () => {},
   };
   return {
-    docListeners, winListeners, focused, confirms,
+    docListeners, winListeners, focused, confirms, created,
     setConfirm: (value) => { confirmResult = value; },
     fireOutsidePointer: () => docListeners.get("pointerdown")({ target: { closest: () => null } }),
     fireEscape: () => winListeners.get("keydown")({ key: "Escape" }),
@@ -61,8 +63,8 @@ function makeConfigClient() {
   };
 }
 
-function makeHarness() {
-  const dom = makeDom();
+function makeHarness(viewportHeight = 900) {
+  const dom = makeDom(viewportHeight);
   const configClient = makeConfigClient();
   const react = createFakeReact();
   let active = "openbmc";
@@ -159,7 +161,8 @@ function makeHarness() {
     attachFocusRecorders();
   };
 
-  return { dom, configClient, tree: () => tree, render, shell, gearButton, cardButton, switcherButton, panelColumn, scrimInput, heading, openShell, attachFocusRecorders, getActive: () => active };
+  return { dom, configClient, tree: () => tree, render, shell, gearButton, cardButton, switcherButton, panelColumn, scrimInput, heading, openShell, attachFocusRecorders, getActive: () => active,
+    cssText: () => dom.created.map((el) => el.textContent ?? "").join("\n") };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -333,4 +336,28 @@ test("⑨ panel closed: card click is a plain switch, no confirm", async () => {
   assert.equal(h.getActive(), "tgcf");
   assert.equal(h.panelColumn(), null, "no panel appears from a card click");
   assert.equal(h.dom.confirms.length, 0, "panel closed ⇒ nothing dirty to guard");
+});
+
+test("⑩ shell is clamped to the space above its anchor; panel column scrolls; action bar sticks (issue #2)", async () => {
+  const h = makeHarness(900);
+  await h.openShell();
+  h.gearButton("tgcf").props.onClick();
+  await tick();
+  const sh = h.shell();
+  // The trigger stub has no rect → fallback anchor top = innerHeight-60 ⇒ box.bottom = 68.
+  assert.equal(sh.props.style.bottom, 68);
+  assert.equal(sh.props.style.maxHeight, 820, "innerHeight - anchor - margin: the shell top can never leave the viewport");
+  const css = h.cssText();
+  assert.ok(css.includes(".dsh-skins-wide .dsh-skins-pz-panel{overflow-y:auto"),
+    "wide mode: the panel column owns its scroll region");
+  assert.ok(css.includes(".dsh-skins-pz-actions{position:sticky"),
+    "the action bar stays in view while the panel scrolls (Q50)");
+  assert.ok(css.includes(".dsh-skins-pz-del{position:absolute"),
+    "library delete is a corner badge on the cell, not a button stacked below");
+  assert.ok(css.includes("overflow-y:visible"),
+    "stacked (<904px) mode hands scrolling back to the whole shell");
+
+  const tiny = makeHarness(260);
+  await tiny.openShell();
+  assert.equal(tiny.shell().props.style.maxHeight, 220, "very short viewports keep a usable floor, never a negative/zero clamp");
 });

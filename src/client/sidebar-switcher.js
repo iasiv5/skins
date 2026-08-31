@@ -63,7 +63,7 @@ const CSS = [
   '.dsh-skins-pz-panel{flex:0 0 520px;min-width:0;display:flex;flex-direction:column;gap:10px;padding-left:14px;border-left:1px solid var(--dsw-alias-border-l2);transform:translateX(16px);opacity:0;animation:dsh-skins-pz-in .2s ease-out forwards}',
   '@keyframes dsh-skins-pz-in{to{transform:none;opacity:1}}',
   '@media (prefers-reduced-motion:reduce){.dsh-skins-pz-panel{animation:none;transform:none;opacity:1}}',
-  '@media (max-width:904px){.dsh-skins-pop.dsh-skins-wide{flex-direction:column;width:min(360px,calc(100vw - 24px))}.dsh-skins-pz-panel{flex-basis:auto;padding-left:0;border-left:0;border-top:1px solid var(--dsw-alias-border-l2);padding-top:12px;transform:translateY(12px)}}',
+  '@media (max-width:904px){.dsh-skins-pop.dsh-skins-wide{flex-direction:column;width:min(360px,calc(100vw - 24px))}.dsh-skins-pz-panel{flex-basis:auto;padding-left:0;border-left:0;border-top:1px solid var(--dsw-alias-border-l2);padding-top:12px;transform:translateY(12px)}.dsh-skins-pop.dsh-skins-wide .dsh-skins-pz-panel{overflow-y:visible}}',
   '.dsh-skins-pz{display:flex;flex-direction:column;gap:10px}',
   '.dsh-skins-pz-head{display:flex;align-items:center;gap:8px}',
   '.dsh-skins-pz-head .dsh-skins-pop-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none}',
@@ -94,6 +94,21 @@ const CSS = [
   '.dsh-skins-pz-asset img{flex:none;width:44px;height:33px;border-radius:6px;object-fit:cover;border:1px solid var(--dsw-alias-border-l2)}',
   '.dsh-skins-pz-asset-copy{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.dsh-skins-pz-gallery{display:flex;flex-direction:column;gap:8px}',
+  // -- field issue #2: library cell corner-badges, sticky action bar,
+  //    and a dedicated scroll region for the panel column ---------------
+  '.dsh-skins-wide .dsh-skins-pz-panel{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}',
+  '.dsh-skins-pz-cell{position:relative;display:block}',
+  '.dsh-skins-pz-cell .dsh-skins-pz-thumb{width:100%}',
+  '.dsh-skins-pz-del{position:absolute;top:4px;right:4px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font:inherit;font-size:14px;line-height:1;cursor:pointer}',
+  '.dsh-skins-pz-del:hover{background:rgba(0,0,0,.78)}',
+  '.dsh-skins-pz-del:disabled{opacity:.55;cursor:default}',
+  '.dsh-skins-pz-rowbtns{display:flex;gap:6px;flex-wrap:wrap}',
+  '.dsh-skins-pz-actions{position:sticky;bottom:0;z-index:1;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:2px;padding:10px 2px 2px;background:var(--dsw-alias-bg-overlay);border-top:1px solid var(--dsw-alias-border-l2)}',
+  '.dsh-skins-pz-cluster{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}',
+  '.dsh-skins-pz-cluster-status{flex-direction:column;align-items:flex-start;gap:4px;flex-wrap:nowrap}',
+  '.dsh-skins-pz-primary{background:var(--dsh-alias-brand-primary,#C3272B);border-color:transparent;color:#fff}',
+  '.dsh-skins-pz-primary:hover{filter:brightness(1.06)}',
+  '.dsh-skins-pz-danger{color:var(--dsw-alias-error-text,var(--dsw-static-red-500,#d33));border-color:var(--dsw-alias-error-text,var(--dsw-static-red-500,#d33))}',
 ].join("\n");
 
 export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, configClient, skinsById }) {
@@ -333,12 +348,19 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
       : showPersonalization && typeof window !== "undefined"
         ? Math.max(12, Math.min(box.left, window.innerWidth - 892))
         : box.left;
+    // Clamp the shell to the space actually available ABOVE its bottom
+    // anchor: the CSS max-height(100vh-24px) alone ignores the anchor
+    // offset, so a tall panel slides its top off-screen with the content
+    // unreachable AND unscrollable (field issue #2).
+    const shellMaxHeight = box === null || typeof window === "undefined" || typeof window.innerHeight !== "number"
+      ? undefined
+      : Math.max(220, window.innerHeight - box.bottom - 12);
     const panel = open && box && typeof document !== "undefined"
       ? reactDom.createPortal(jsx("div", {
         className: `dsh-skins-pop${showPersonalization ? " dsh-skins-wide" : ""}`,
         role: "dialog",
         "aria-label": showPersonalization ? localeTranslate("personalization.title") : tr("skins.switch"),
-        style: { left: shellLeft, bottom: box.bottom },
+        style: { left: shellLeft, bottom: box.bottom, maxHeight: shellMaxHeight },
         children: [
           jsx("div", { key: "main", className: "dsh-skins-pop-main", children: [
             jsx("div", { key: "appearance", className: "dsh-skins-pop-title", children: tr("appearance.title") }),

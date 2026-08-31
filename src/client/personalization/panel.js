@@ -306,7 +306,7 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
       }),
       ...fieldRows,
       jsx("div", { className: "dsh-skins-pz-actions", children: [
-        jsx("div", { className: "dsh-skins-pz-cluster", children: statusCluster }),
+        jsx("div", { className: "dsh-skins-pz-cluster dsh-skins-pz-cluster-status", children: statusCluster }),
         jsx("div", { className: "dsh-skins-pz-cluster", children: [
           hasAnyOverride ? jsx("button", {
             type: "button", className: "dsh-skins-pz-btn", disabled: writesBlocked,
