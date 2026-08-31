@@ -310,6 +310,61 @@ test("openbmc projects baked defaults through its own curve (ADR-0004)", async (
   assert.equal(customWallpaper.effects.backdrop.imageLight.includes("linear-gradient"), false);
 });
 
+test("uefi-harness projects baked defaults through its own curve (ADR-0004)", async () => {
+  const { createUefiHarness } = await import("../src/client/skins/uefi-harness/index.js");
+  const skin = createUefiHarness({ jsx: () => null });
+  const USER = "u_0123456789abcdef0123456789abcdef";
+  const project = (overrides) => projectSkin(skin, overrides, { assetResolver: resolver });
+
+  // Default P=55 anchors the derived projection to the baked alpha strings.
+  const def = project({});
+  assert.equal(def.degraded, "none");
+  assert.deepEqual(def.effects.tokenOverrides["--dsw-alias-bg-base"], {
+    light: "rgba(248, 247, 255, 0.55)",
+    dark: "rgba(23, 18, 45, 0.55)",
+  });
+  assert.deepEqual(def.effects.tokenOverrides["--dsw-specific-sidebar-fill"], {
+    light: "rgba(238, 235, 255, 0.60)",
+    dark: "rgba(25, 20, 48, 0.72)",
+  });
+  assert.equal("--dsw-alias-bg-overlay" in def.effects.tokenOverrides, false, "floating layers stay fixed (tgcf ruling #16 analogue)");
+  assert.equal(def.effects.backdrop.blur, 0, "no frost at the default anchor");
+  assert.equal(def.effects.cssVariables, null);
+  assert.equal(def.effects.staticCss, skin.css, "byte-equal static css — no glass rule at default");
+
+  // P=0 floors the riding family at 0 points (alpha string "0.00").
+  const floor = project({ panelOpacity: 0 });
+  assert.equal(floor.effects.tokenOverrides["--dsw-alias-bg-base"].light, "rgba(248, 247, 255, 0.00)");
+  assert.equal(
+    floor.effects.backdrop.imageLight,
+    "linear-gradient(rgba(248, 247, 255, 0.00) 0%, rgba(238, 234, 255, 0.00) 100%), url(" + skin.art + ")",
+  );
+
+  // Blur ramps quadratically from the P=55 anchor: P=77 → 6, P=100 → 24 (cap).
+  const mid = project({ panelOpacity: 77 });
+  assert.equal(mid.effects.backdrop.blur, 6);
+  const ceiling = project({ panelOpacity: 100 });
+  assert.equal(ceiling.effects.backdrop.blur, 24);
+  assert.equal(
+    ceiling.effects.staticCss,
+    skin.css + "\n" + 'body[data-dsh-uefi-harness] [id="root"]{backdrop-filter:blur(var(--dsh-uefi-glass-blur,0px))}',
+  );
+  assert.deepEqual(ceiling.effects.cssVariables["--dsh-uefi-glass-blur"], { light: "24px", dark: "24px" });
+
+  // Slogan overrides ride the locale field; invalid P falls back to the default.
+  const custom = project({ slogan: { zh: "甲", en: "Z" } });
+  assert.deepEqual(custom.effects.slogans, { zh: "甲", en: "Z" });
+  const bad = project({ panelOpacity: 101 });
+  assert.equal(bad.effects.tokenOverrides["--dsw-alias-bg-base"].light, "rgba(248, 247, 255, 0.55)");
+  assert.deepEqual(bad.issues.map((issue) => issue.key), ["panelOpacity"]);
+
+  // User wallpapers keep the legacy semantics: bare url, no scrim gradient.
+  const customWallpaper = project({ wallpaper: USER });
+  assert.equal(customWallpaper.effects.backdrop.imageLight, `url("/dsh-skins/assets/${USER}.png")`);
+  assert.equal(customWallpaper.effects.backdrop.imageDark, `url("/dsh-skins/assets/${USER}.png")`);
+  assert.equal(customWallpaper.effects.backdrop.imageLight.includes("linear-gradient"), false);
+});
+
 test("the REAL tgcf factory projects single scrim, static palette and static favicon", async () => {
   const { createTgcfSkin } = await import("../src/client/skins/tgcf/index.js");
   // No-arg calls throw at the jsxRuntime destructure; stub it (review ③-4②).

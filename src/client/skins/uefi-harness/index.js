@@ -5,6 +5,8 @@
  * logo (source and trademark note in README known limits); the rest of the
  * design remains a placeholder until the final design lands.
  */
+import { resolveImageRef } from "../../../shared/personalization/catalog.js";
+
 // Official UEFI Forum logo — the red cube with white "uefi" letters, embedded
 // as two vector paths traced from uefi.org's published uefi_logo_red.gif
 // (retrieved via Wikimedia Commons "Logo of the UEFI Forum.svg"; trademark of
@@ -1059,6 +1061,68 @@ body[data-dsh-uefi-harness] [data-streaming] {
   const SCRIM_DARK =
     "linear-gradient(rgba(23, 18, 45, 0.08) 0%, rgba(16, 12, 34, 0.20) 100%)" + artLayer;
 
+  /* ================================================================
+   * 个性化投影（ADR-0004）：slogan + panelOpacity 单旋钮。
+   * 主 alpha 线性（P/100），每 token 带固定相对增量——增量由烘焙值反推，
+   * 默认 P=55 时派生串与烘焙串逐字节相等（alpha 一律 toFixed(2) 两位小数）。
+   * P=0 纯壁纸完全可见；P=100 随动族全钳 1；blur 以默认点为锚二次爬坡，
+   * P>55 起壁纸 ::before 模糊与面板霜层同步增强（tgcf 同机制）。
+   * ================================================================ */
+  const GLASS_RULE =
+    'body[data-dsh-uefi-harness] [id="root"]{backdrop-filter:blur(var(--dsh-uefi-glass-blur,0px))}';
+
+  const SLOGANS = { zh: "启于固件 · 行于万象", en: "Boot before everything" };
+
+  function project(values, assets) {
+    const P = values.panelOpacity;
+    const wallpaper = values.wallpaper;
+    const url = assets?.wallpaper?.url ?? null;
+    const pt = (baked) => Math.min(100, Math.max(0, P + baked - 55));
+    const pct = (points) => (points / 100).toFixed(2);
+    const alpha = (rgb, baked) => `rgba(${rgb}, ${pct(pt(baked))})`;
+
+    // 随动族：字面量烘焙点（亮 / 暗），RGB 逐字取自上部配色块（7 token，
+    // uefi 无 login-input）；浮层族（bg-overlay/menu/selector/tip/nav 态/
+    // 气泡）固定不随旋钮。
+    const riding = {
+      "--dsw-alias-bg-base": { light: ["248, 247, 255", 55], dark: ["23, 18, 45", 55] },
+      "--dsw-alias-bg-module-platform": { light: ["241, 238, 255", 55], dark: ["39, 31, 73", 60] },
+      "--dsw-alias-bg-layer-1": { light: ["255, 255, 255", 48], dark: ["31, 25, 59", 55] },
+      "--dsw-alias-bg-layer-2": { light: ["247, 245, 255", 56], dark: ["39, 31, 73", 60] },
+      "--dsw-alias-bg-layer-3": { light: ["241, 238, 255", 62], dark: ["48, 38, 88", 64] },
+      "--dsw-specific-sidebar-fill": { light: ["238, 235, 255", 60], dark: ["25, 20, 48", 72] },
+      "--dsw-specific-input-major": { light: ["255, 255, 255", 62], dark: ["42, 34, 78", 55] },
+    };
+    const tokenOverrides = {};
+    for (const [key, modes] of Object.entries(riding)) {
+      tokenOverrides[key] = { light: alpha(modes.light[0], modes.light[1]), dark: alpha(modes.dark[0], modes.dark[1]) };
+    }
+
+    // 纱与旋钮同联动（默认 P 时整串与烘焙 scrim 逐字节相等）。
+    const scrimLight = `linear-gradient(${alpha("248, 247, 255", 10)} 0%, ${alpha("238, 234, 255", 22)} 100%)` + artLayer;
+    const scrimDark = `linear-gradient(${alpha("23, 18, 45", 8)} 0%, ${alpha("16, 12, 34", 20)} 100%)` + artLayer;
+
+    // legacy 壁纸语义：用户图走裸 url（纱不上用户图）。
+    const custom = typeof wallpaper === "string" && wallpaper !== "builtin:uefi-harness:art"
+      && resolveImageRef(wallpaper)?.kind === "user" && url !== null;
+    const imageLight = custom ? `url("${url}")` : scrimLight;
+    const imageDark = custom ? `url("${url}")` : scrimDark;
+
+    const blurPx = Math.round(24 * Math.pow(Math.max(0, (P - 55) / 45), 2));
+
+    return {
+      bodyAttribute: "dshUefiHarness",
+      slogans: values.slogan ?? SLOGANS,
+      titleBrand: "UEFI Harness",
+      favicon: { href: favicon, mime: "image/svg+xml" },
+      backdrop: { imageLight, imageDark, overlayLight: null, overlayDark: null, blur: blurPx },
+      tokenOverrides,
+      cssVariables: blurPx > 0 ? { "--dsh-uefi-glass-blur": { light: `${blurPx}px`, dark: `${blurPx}px` } } : null,
+      staticCss: blurPx > 0 ? css + "\n" + GLASS_RULE : css,
+      decorations: null,
+    };
+  }
+
   return {
     id: "uefi-harness",
     label: "UEFI Harness",
@@ -1076,6 +1140,7 @@ body[data-dsh-uefi-harness] [data-streaming] {
     art: BACKGROUND_ART,
     scrimLight: SCRIM_LIGHT,
     scrimDark: SCRIM_DARK,
-    slogans: { zh: "启于固件 · 行于万象", en: "Boot before everything" },
+    slogans: SLOGANS,
+    project,
   };
 }
