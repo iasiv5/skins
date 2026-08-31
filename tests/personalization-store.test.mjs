@@ -169,6 +169,32 @@ test("unknown fields and unknown skins are rejected", async () => {
   );
 });
 
+test("legacy skins take slogan and panelOpacity overrides and survive reload (ADR-0004)", async () => {
+  const dir = tempDir();
+  const store = makeStore(dir);
+  await setOverride(store, "openbmc", "slogan", { zh: "甲", en: "Z" });
+  await setOverride(store, "openbmc", "panelOpacity", 80);
+  await setOverride(store, "uefi-harness", "panelOpacity", 20);
+  const snapshot = store.snapshot();
+  assert.deepEqual(snapshot.skins.openbmc.slogan, { zh: "甲", en: "Z" });
+  assert.equal(snapshot.skins.openbmc.panelOpacity, 80);
+  assert.equal(snapshot.skins["uefi-harness"].panelOpacity, 20);
+
+  // Out-of-range values are rejected by the write-path field gate.
+  await assert.rejects(
+    store.applyOperations({ operations: [{ op: "set", skinId: "openbmc", key: "panelOpacity", value: 101 }] }),
+    (e) => e.code === "INVALID_CONFIG",
+  );
+  assert.equal(store.snapshot().skins.openbmc.panelOpacity, 80, "rejected write leaves state untouched");
+
+  // Valid overrides survive a reopen with clean normalization (no revision bump).
+  const reopened = makeStore(dir);
+  const re = reopened.snapshot();
+  assert.deepEqual(re.skins.openbmc.slogan, { zh: "甲", en: "Z" });
+  assert.equal(re.skins.openbmc.panelOpacity, 80);
+  assert.equal(re.skins["uefi-harness"].panelOpacity, 20);
+});
+
 test("load normalization drops unknown keys, stale shapes, dangling refs and orphan sections", async () => {
   const dir = tempDir();
   const store = makeStore(dir);
