@@ -16,8 +16,8 @@ function fixtureSkin() {
     bodyAttr: "dshTgcfSkin",
     project(values, assets) {
       // Mirrors the real tgcf projector: one translucency knob derives the
-      // scrim alpha and blur (ruling #14).
-      const scrimAlpha = (Math.round((values.panelOpacity * 30) / 82) / 100).toFixed(3);
+      // scrim alpha and blur quadratically (ruling #15 amendment).
+      const scrimAlpha = (Math.round(30 * (values.panelOpacity / 100) ** 2) / 100).toFixed(3);
       return {
         bodyAttribute: "dshTgcfSkin",
         slogans: values.slogan,
@@ -28,7 +28,7 @@ function fixtureSkin() {
           imageDark: `url("${assets.wallpaper?.url ?? "about:blank"}")`,
           overlayLight: `rgba(0,0,0,${scrimAlpha})`,
           overlayDark: `rgba(0,0,0,${scrimAlpha})`,
-          blur: Math.round((values.panelOpacity * 12) / 82),
+          blur: Math.round(12 * (values.panelOpacity / 100) ** 2),
         },
         tokenOverrides: {
           "--dsw-alias-accent": PALETTE.accent,
@@ -70,32 +70,36 @@ function legacySkin() {
 test("projection with overrides succeeds without degradation", () => {
   const result = projectSkin(fixtureSkin(), {
     slogan: { zh: "自定义", en: "Custom" },
-    panelOpacity: 82,
+    panelOpacity: 50,
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.effects.slogans, { zh: "自定义", en: "Custom" });
-  assert.equal(result.effects.backdrop.blur, 12);
-  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)");
-  assert.equal(result.effects.backdrop.overlayDark, "rgba(0,0,0,0.300)", "one scrim alpha drives both overlays");
+  assert.equal(result.effects.backdrop.blur, 3);
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.080)");
+  assert.equal(result.effects.backdrop.overlayDark, "rgba(0,0,0,0.080)", "one scrim alpha drives both overlays");
   assert.equal(result.effects.tokenOverrides["--dsw-alias-accent"].light, "#C3272B");
   assert.equal(result.effects.staticCss, "body[data-dsh-tgcf-skin] .x{color:red}");
   assert.equal(result.effects.decorations[0].key, "lanterns");
 });
 
-test("the translucency curve is calibrated through the historical defaults (ruling #14)", () => {
-  // P=82 must reproduce the retired fields' factory values exactly.
-  const historical = projectSkin(fixtureSkin(), { panelOpacity: 82 }, { assetResolver: resolver });
-  assert.equal(historical.effects.backdrop.blur, 12);
-  assert.equal(historical.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)");
-  // P=10 (factory default since ruling #15) → scrim 4, blur 1.
-  const current = projectSkin(fixtureSkin(), {}, { assetResolver: resolver });
-  assert.equal(current.effects.backdrop.blur, 1);
-  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.040)");
+test("the translucency sweep spans its endpoints (ruling #15 amendment)", () => {
+  // Quadratic growth keeps mid-range usable: P=50 → blur 3, scrim 8%.
+  const mid = projectSkin(fixtureSkin(), { panelOpacity: 50 }, { assetResolver: resolver });
+  assert.equal(mid.effects.backdrop.blur, 3);
+  assert.equal(mid.effects.backdrop.overlayLight, "rgba(0,0,0,0.080)");
+  // P=100 hides the wallpaper completely (tint 1.0 + max scrim + max blur).
+  const ceiling = projectSkin(fixtureSkin(), { panelOpacity: 100 }, { assetResolver: resolver });
+  assert.equal(ceiling.effects.backdrop.blur, 12);
+  assert.equal(ceiling.effects.backdrop.overlayLight, "rgba(0,0,0,0.300)");
   // P=0 is the pure-wallpaper floor: every derived layer zeroes out.
   const floor = projectSkin(fixtureSkin(), { panelOpacity: 0 }, { assetResolver: resolver });
   assert.equal(floor.effects.backdrop.blur, 0);
   assert.equal(floor.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)");
+  // P=10 (factory default) → derived layers ~zero; the wallpaper reads raw.
+  const current = projectSkin(fixtureSkin(), {}, { assetResolver: resolver });
+  assert.equal(current.effects.backdrop.blur, 0);
+  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)");
 });
 
 test("layer-1 field fallback keeps projection healthy with bad overrides", () => {
@@ -104,8 +108,8 @@ test("layer-1 field fallback keeps projection healthy with bad overrides", () =>
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
   assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
-  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.040)"); // catalog default 10
-  assert.equal(result.effects.backdrop.blur, 1); // catalog default
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)"); // catalog default 10
+  assert.equal(result.effects.backdrop.blur, 0); // catalog default
 });
 
 test("a crashing projector triggers the defaults-only retry (layer 2)", () => {
@@ -257,16 +261,17 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   const resolverFor = (ref) => ({ url: `builtin://${ref.skinId}/${ref.assetKey}`, mime: "image/svg+xml" });
   const result = projectSkin(skin, {}, { assetResolver: resolverFor });
   assert.equal(result.degraded, "none");
-  // Translucency curve at the factory default P=10 → scrim 4, blur 1 (ruling #15);
-  // one alpha drives BOTH overlays.
-  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.040),rgba(255,246,234,0.040))");
-  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.040),rgba(14,7,8,0.040))");
-  assert.equal(result.effects.backdrop.blur, 1);
-  assert.deepEqual(result.effects.cssVariables["--dsh-tgcf-glass-blur"], { light: "1px", dark: "1px" });
+  // Translucency curve at the factory default P=10 → scrim 0, blur 0 (ruling #15
+  // amendment): the default state IS the near-raw wallpaper; one alpha drives
+  // BOTH overlays.
+  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.000),rgba(255,246,234,0.000))");
+  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.000),rgba(14,7,8,0.000))");
+  assert.equal(result.effects.backdrop.blur, 0);
+  assert.deepEqual(result.effects.cssVariables["--dsh-tgcf-glass-blur"], { light: "0px", dark: "0px" });
   // Sidebar fill sits ABOVE the content base by the reference-skin deltas
   // (ruling #15: light +0.05, dark +0.17 — openbmc/uefi pattern).
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-base"], { light: "rgba(255,252,246,0.1)", dark: "rgba(24,16,16,0.1)" });
-  assert.deepEqual(result.effects.tokenOverrides["--dsh-specific-sidebar-fill"], { light: "rgba(255,252,246,0.15)", dark: "rgba(24,16,16,0.27)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-sidebar-fill"], { light: "rgba(255,252,246,0.15)", dark: "rgba(24,16,16,0.27)" });
   assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/crimson")');
   // Favicon is a static skin asset since the field was removed.
   assert.equal(result.effects.favicon.href, skin.favicon);

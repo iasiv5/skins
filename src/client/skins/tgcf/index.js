@@ -118,12 +118,15 @@ export function createTgcfSkin(jsxRuntime) {
   };
 
   function project(values, assets) {
-    // Ruling #14: one translucency knob drives all three layers — panel
-    // tint alpha, wallpaper scrim and blur — through a linear curve through
-    // the origin calibrated at the historical defaults (P=82 → scrim 30,
-    // blur 12), so pre-merge looks survive unchanged at the same P. The
-    // floor clamp is gone: P=0 is the fully transparent "pure wallpaper".
-    const alpha = Math.min(1, Math.max(0, values.panelOpacity / 100));
+    // Ruling #14: one translucency knob drives the panel tint, the wallpaper
+    // scrim and the blur. Ruling #15 amendment — the knob's CONTRACT is the
+    // full visual range: P=0 pure wallpaper, P=100 wallpaper fully hidden.
+    // The scrim/blur therefore grow QUADRATICALLY (12·(P/100)² and
+    // 30·(P/100)²): linear growth saturated the perceived effect by ~50%,
+    // leaving the upper half of the slider feeling dead. Panel tint alpha
+    // stays linear (it IS the requested percentage).
+    const t = Math.min(1, Math.max(0, values.panelOpacity / 100));
+    const alpha = t;
     // Sidebar fill rides ABOVE the content base by the reference-skin delta
     // (ruling #15): menu column stays readable, content stays translucent.
     // Rounded to points — 0.1 + 0.05 must never print as 0.15000000000000002.
@@ -133,8 +136,8 @@ export function createTgcfSkin(jsxRuntime) {
     };
     // Single-value scrim (Q35): one alpha drives both theme overlays; the
     // base tint stays per-theme (warm white veil / ink veil).
-    const scrimAlpha = (Math.round((values.panelOpacity * 30) / 82) / 100).toFixed(3);
-    const blurPx = Math.round((values.panelOpacity * 12) / 82);
+    const scrimAlpha = (Math.round(30 * t * t) / 100).toFixed(3);
+    const blurPx = Math.round(12 * t * t);
     const scrimLight = `linear-gradient(rgba(255,246,234,${scrimAlpha}),rgba(255,246,234,${scrimAlpha}))`;
     const scrimDark = `linear-gradient(rgba(14,7,8,${scrimAlpha}),rgba(14,7,8,${scrimAlpha}))`;
     const wallpaperUrl = assets.wallpaper?.url ?? null;
@@ -158,7 +161,7 @@ export function createTgcfSkin(jsxRuntime) {
         "--dsw-alias-button-primary-fill": PALETTE.accent,
         "--dsw-alias-button-primary-hover": PALETTE.gold,
         "--dsw-alias-bg-base": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
-        "--dsh-specific-sidebar-fill": { light: panelBase(true, sidebarAlpha.light), dark: panelBase(false, sidebarAlpha.dark) },
+        "--dsw-specific-sidebar-fill": { light: panelBase(true, sidebarAlpha.light), dark: panelBase(false, sidebarAlpha.dark) },
         "--dsw-specific-bubble": PALETTE.bubble,
       },
       cssVariables: {
