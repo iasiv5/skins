@@ -237,6 +237,50 @@ test("declining the clear-library confirm deletes nothing", async () => {
   // Reaching here without throwing means the decline path held.
 });
 
+const delButtonsOf = (panel) => flatten(panel.tree()).filter(
+  (n) => n.type === "button" && typeof n.props["aria-label"] === "string" && n.props["aria-label"].startsWith("personalization.library.delete:"),
+);
+
+test("single delete: busy in flight, outcome always surfaced, retry after failure", async () => {
+  const assets = [
+    { id: "u_0123456789abcdef0123456789abcdef", displayName: "a.png" },
+    { id: "u_0123456789abcdef0123456789abcdeff", displayName: "b.png" },
+  ];
+  let resolveDelete = null;
+  const config = makeConfigClient({ status: "synced", library: assets });
+  config.deleteImage = (id) => new Promise((resolve) => {
+    resolveDelete = () => resolve({ affectedSkins: [], deleted: id });
+  });
+  const panel = mountPanel({ skinId: "tgcf", status: "synced", config });
+  await tick();
+  const buttons = () => delButtonsOf(panel);
+  assert.equal(buttons().length, 2);
+  assert.equal(buttons()[0].props.disabled, false, "enabled before the flight");
+
+  const flight = buttons()[0].props.onClick();
+  await tick();
+  // In flight: the clicked cell shows a spinner (not "×") and every delete
+  // button is disabled — no double DELETEs, no silent window.
+  assert.equal(typeof buttons()[0].props.children, "object", "busy cell renders a spinner");
+  assert.equal(buttons()[0].props.disabled, true, "busy delete disabled");
+  assert.equal(buttons()[1].props.disabled, true, "other deletes queue behind the flight");
+
+  resolveDelete();
+  await flight;
+  await tick();
+  const note = textsOf(panel.tree()).find((t) => typeof t === "string" && t.startsWith("personalization.library.deleted"));
+  assert.ok(note, "success is announced, never silent");
+  assert.ok(note.includes("name=a.png"), "the deleted asset is named");
+  assert.equal(buttons()[0].props.disabled, false, "flight over: buttons re-enabled");
+
+  // Failure path: the default stub errors — message shown, retry possible.
+  const failing = mountPanel({ skinId: "tgcf", status: "synced", config: makeConfigClient({ status: "synced", library: assets.slice(0, 1) }) });
+  await tick();
+  await delButtonsOf(failing)[0].props.onClick();
+  assert.ok(textsOf(failing.tree()).includes("personalization.library.deleteFailed"), "failure surfaced");
+  assert.equal(delButtonsOf(failing)[0].props.disabled, false, "retry stays possible");
+});
+
 test("conflict banner renders only while synced (③-3)", async () => {
   const config = makeConfigClient({ status: "synced" });
   config.flushNow = async () => ({ flushed: 0, blocked: "conflict" });

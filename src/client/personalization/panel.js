@@ -96,6 +96,7 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
   function WallpaperSection({ skinId, field, value, onValue, state, disabled }) {
     const uploadRef = useRef(null);
     const [message, setMessage] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
     const [visible, setVisible] = useState(PAGE_SIZE);
     const schema = getSkinSchema(skinId);
     const builtins = schema?.builtinAssets ?? {};
@@ -104,13 +105,22 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     const library = state.library;
 
     const removeAsset = async (asset) => {
+      if (deletingId !== null) return; // one delete in flight — no double DELETEs
       const references = state.references[asset.id] ?? [];
       const names = references.map((entry) => `${labelFor(entry.skinId)} · ${entry.key}`).join("\n");
       const confirmed = references.length === 0
         || window.confirm(`${tr("personalization.library.deleteConfirm")}\n${names}`);
       if (!confirmed) return;
+      setMessage(null); // a stale note must not outlive its action
+      setDeletingId(asset.id);
       const result = await configClient.deleteImage(asset.id);
-      if (result.error) setMessage(tr("personalization.library.deleteFailed"));
+      setDeletingId(null);
+      // Success is announced too: the refetch inside deleteImage removes the
+      // cell, but the outcome must never read as "did it actually delete?"
+      // (field report — silent success left the user unsure).
+      setMessage(result.error
+        ? tr("personalization.library.deleteFailed")
+        : tr("personalization.library.deleted", { name: asset.displayName }));
     };
 
     const clearLibrary = async () => {
@@ -168,10 +178,14 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
                   children: jsx("img", { src: configClient.assetUrl(asset), alt: asset.displayName, loading: "lazy" }),
                 }, asset.id),
                 jsx("button", {
-                  type: "button", className: "dsh-skins-pz-del", disabled,
+                  type: "button",
+                  className: `dsh-skins-pz-del${deletingId === asset.id ? " dsh-skins-pz-del-busy" : ""}`,
+                  disabled: disabled || deletingId !== null,
                   "aria-label": `${tr("personalization.library.delete")}: ${asset.displayName}`,
                   onClick: () => removeAsset(asset),
-                  children: "×",
+                  children: deletingId === asset.id
+                    ? jsx("span", { className: "dsh-skins-update-spinner", "aria-hidden": "true" })
+                    : "×",
                 }, `${asset.id}-del`),
               ],
             })),
@@ -187,12 +201,14 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
           message === null ? null : jsx("div", { className: "dsh-skins-pz-status dsh-skins-pz-muted", children: message }),
           jsx("div", { className: "dsh-skins-pz-rowbtns", children: [
             jsx("button", {
-              type: "button", className: "dsh-skins-pz-btn", disabled,
+              type: "button", className: "dsh-skins-pz-btn",
+              disabled: disabled || deletingId !== null,
               onClick: () => uploadRef.current?.click(),
               children: tr("personalization.library.upload"),
             }),
             library.length > 0 ? jsx("button", {
-              type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-danger", disabled,
+              type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-danger",
+              disabled: disabled || deletingId !== null,
               onClick: clearLibrary,
               children: tr("personalization.library.clear"),
             }) : null,
