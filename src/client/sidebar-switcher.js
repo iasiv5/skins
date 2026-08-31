@@ -274,6 +274,16 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
         "aria-checked": activeId === skin.id,
         className: `dsh-skins-pop-card${activeId === skin.id ? " dsh-skins-pop-card-on" : ""}`,
         onClick: () => {
+          // Panel open → the card is a panel-target switch (design §7.2,
+          // v2.4.1): the panel follows the selection so active and panel
+          // target can never split. The dirty guard MUST run before
+          // runtime.select — a refusal keeps both untouched (③-2). A
+          // non-personalizable target (no schema) collapses the panel
+          // through the same guard instead of following.
+          if (personalizeId !== null && personalizeId !== skin.id) {
+            if (!confirmLeave()) return;
+            setPersonalizeId(personalizable ? skin.id : null);
+          }
           runtime.select(skin.id);
           setActiveId(skin.id);
         },

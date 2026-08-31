@@ -275,7 +275,7 @@ test("⑥ dirty target switch to another gear: refuse keeps active skin AND pane
   assert.ok(h.heading().props.children.includes("OpenBMC"), "panel now targets openbmc");
 });
 
-test("⑦ card clicks switch the skin but never the panel target", async () => {
+test("⑦ panel open: card click follows the panel target (v2.4.1, reverses Q48)", async () => {
   const h = makeHarness();
   await h.openShell();
   h.gearButton("tgcf").props.onClick();
@@ -283,5 +283,54 @@ test("⑦ card clicks switch the skin but never the panel target", async () => {
   h.cardButton("uefi-harness").props.onClick();
   await tick();
   assert.equal(h.getActive(), "uefi-harness", "card switches the active skin");
-  assert.ok(h.heading().props.children.includes("TGCF"), "panel target stays on tgcf (Q48)");
+  assert.equal(h.dom.confirms.length, 0, "clean panel → no confirm needed");
+  assert.notEqual(h.panelColumn(), null, "panel stays docked");
+  assert.ok(h.heading().props.children.includes("UEFI"), "panel target follows the selection");
+  // Active and panel target can never split while the panel is open.
+  assert.ok(!h.heading().props.children.includes("TGCF"), "stale panel content is gone");
+
+  // Non-personalizable target (official): the panel collapses via the same
+  // clean path instead of docking an empty column.
+  h.cardButton("official").props.onClick();
+  await tick();
+  assert.equal(h.getActive(), "official");
+  assert.equal(h.panelColumn(), null, "no empty panel column for a skin without schema");
+  assert.equal(h.dom.confirms.length, 0, "still clean → still no confirm");
+});
+
+test("⑧ dirty card target switch: guard BEFORE select; refuse keeps active+panel, agree follows (③-2)", async () => {
+  const h = makeHarness();
+  await h.openShell();
+  h.gearButton("tgcf").props.onClick();
+  await tick();
+  h.scrimInput().props.onChange({ target: { value: "66" } });
+  await tick();
+  assert.equal(h.configClient.getState().dirtyCount, 1);
+
+  h.dom.setConfirm(false);
+  h.cardButton("uefi-harness").props.onClick();
+  await tick();
+  assert.equal(h.dom.confirms.length, 1, "card click with dirty panel asks first");
+  assert.equal(h.getActive(), "tgcf", "refusal must not switch the active skin (guard runs BEFORE select)");
+  assert.ok(h.heading().props.children.includes("TGCF"), "refusal keeps the panel target");
+  assert.equal(h.configClient.calls.restore, 0, "refusal keeps the previews");
+  assert.equal(h.configClient.getState().dirtyCount, 1);
+
+  h.dom.setConfirm(true);
+  h.cardButton("uefi-harness").props.onClick();
+  await tick();
+  assert.equal(h.configClient.calls.restore, 1, "agreement discards via restore()");
+  assert.equal(h.getActive(), "uefi-harness", "agreement switches the skin");
+  assert.ok(h.heading().props.children.includes("UEFI"), "panel follows after the discard");
+  assert.equal(h.configClient.calls.flushNow, 0, "leaving never persists (R1)");
+});
+
+test("⑨ panel closed: card click is a plain switch, no confirm", async () => {
+  const h = makeHarness();
+  await h.openShell();
+  h.cardButton("tgcf").props.onClick();
+  await tick();
+  assert.equal(h.getActive(), "tgcf");
+  assert.equal(h.panelColumn(), null, "no panel appears from a card click");
+  assert.equal(h.dom.confirms.length, 0, "panel closed ⇒ nothing dirty to guard");
 });
