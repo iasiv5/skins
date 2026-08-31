@@ -180,6 +180,7 @@ config client 四态不变：`loading / synced / offline-failed / unsupported-re
 - **保存语义（v2.3 的 400ms 防抖自动落库与"关弹层即冲刷"整体废除）**：`preview/previewReset` 只写本地预览层并即时投影；「保存」(`flushNow`) 是唯一写路径；「还原」(`restore`) 清空预览层回到已同步值；离开编辑面的五条通道（点空白 / 换肤按钮 / Esc / 齿轮收面板 / 面板目标切换）统一 `dirtyLeave` 确认，同意 = `restore()` 丢弃后继续原动作，拒绝 = 状态原样保持（守卫在 `runtime.select` 之前）
 - 409 分 flavor：`STORE_READONLY` → 只读降级且不 refetch；revision 冲突 → 先 refetch（预览保留、revision 更新）再返回冲突，用户再点保存即以新 baseRevision 提交；冲突横幅仅 `synced` 态渲染
 - fetch 晚到时本地 dirty preview 字段不被覆盖；请求序号防乱序；dispose 后到达响应丢弃；fetch 晚到但已切肤 → 丢弃
+- **快照落地即通知（v2.4.1）**：`refetch()` 三处成功分支（synced/unsupported/recovery）应用新快照后无条件 `emit()`——同状态下 `setStatus` 不触发通知，仅靠它会静默换掉快照、饿死全部订阅者（实测 #4 续报：删除成功而图库网格不更新）；状态转换期的双发无害
 
 runtime：`updateActive(values)` 热更新专用入口（不复用 select）；mount 事务化——每效果应用前校验、`try/catch` 失败逆序清理已注册 disposer；替换新 effects 失败 → 恢复上一份已知有效 effects；测试覆盖第 N 个效果抛错前 N−1 个全清理、非法 token/favicon/background 中途失败。
 
@@ -315,6 +316,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.4.1 修订（用户裁决 #4）**：tgcf 展示文案——卡片 label zh「天官赐福 · 百无禁忌」→「天官赐福」（en 不变）；标语出厂默认 zh「千灯引路 · 长夜同明」→「百无禁忌」，en 采用 README 既有作品副题译法「No Taboos」。同步点：皮肤静态 `slogans` 字典与 catalog slogan 默认**必须一致**（面板默认值与无覆写时的落地文案同源不同处），另含三处测试断言与 README 双语出厂标语提及；已存覆写不受影响（默认只流向未修改字段）。
 
 **v2.4.1 修订（用户裁决 #5）**：标签页标题退出个性化——`titleBrand` 字段从 catalog 移除（tgcf 5 字段：壁纸/标语/面板透明度/模糊/遮罩；未来皮肤不再提供此字段），面板不再渲染该控件。**效果契约不破**：`effects.titleBrand` 保留于 SkinEffects shape（§3a 冻结），来源改为皮肤静态 `title`（project() 恒返回字面量，legacy 回退路径本就是 `skin.title`），runtime 拼装 `会话标题 — 品牌段` 不变。存量 `titleBrand` 覆写由 §5.5 加载规范化自动剔除并落盘（revision+1）。词典键 `personalization.titleBrand` 双语删除；gate 保存流验收改由标语驱动（纯面板选择器断言持久化，§13）。沿用 favicon/颜色静态化同一模式（v2.4）：**删字段不删视觉**。
+
+**v2.4.1 修订（实测问题 #4 + 续报：图库删除的反馈与刷新）**：删除反馈——× 点击后整段 DELETE+refetch 飞行期无任何反馈、成功静默，用户无法确认是否删掉。修复：目标格子进入忙碌态（× 变 spinner），飞行期全部删除/上传/清空按钮禁用（单飞防重复 DELETE），结果必播报（成功「已删除：{name}」/ 失败可重试）。**续报根因更深**：播报落地后网格仍不更新——`refetch()` 同状态下经 `setStatus` 不触发 emit，新快照被静默替换、订阅者饿死（上传此前正常仅因 preview emit 顺带读到新快照）。修复见 §7.1：快照落地即无条件通知；上传、跨标签、focus 刷新同享此修复。
 
 ## 20. 终审记录
 

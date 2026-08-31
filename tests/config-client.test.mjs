@@ -52,6 +52,47 @@ test("boot transitions loading → synced and exposes the snapshot", async () =>
   client.dispose();
 });
 
+test("a same-status refetch still notifies subscribers (field report: stale library grid)", async () => {
+  const libraries = [
+    [{ id: "u_a", displayName: "a.png", extension: "png" }],
+    [
+      { id: "u_a", displayName: "a.png", extension: "png" },
+      { id: "u_b", displayName: "b.png", extension: "png" },
+    ],
+  ];
+  const fetchImpl = makeFetch((n) => snapshotBody({ revision: 6 + n, library: libraries[n - 1] }));
+  const client = flushingClient(fetchImpl);
+  const seen = [];
+  client.onStateChange((state) => seen.push({ revision: state.revision, count: state.library.length }));
+  await client.boot();
+  assert.deepEqual(seen.at(-1), { revision: 7, count: 1 }, "boot lands the first snapshot");
+  const emissionsAfterBoot = seen.length;
+  await client.refetch();
+  assert.equal(client.getState().status, "synced", "precondition: the status never changed");
+  assert.equal(seen.length, emissionsAfterBoot + 1, "exactly one notification for the same-status swap");
+  assert.deepEqual(seen.at(-1), { revision: 8, count: 2 });
+  client.dispose();
+});
+
+test("deleteImage: subscribers see the shrunken library after a successful DELETE", async () => {
+  const remaining = [{ id: "u_a", displayName: "a.png", extension: "png" }];
+  const deleted = { id: "u_b", displayName: "b.png", extension: "png" };
+  const fetchImpl = makeFetch((n, url) => {
+    if (n === 1) return snapshotBody({ library: [remaining[0], deleted] });
+    if (url.includes("/library/u_b")) return jsonResponse(200, { affectedSkins: [], revision: 8 });
+    return snapshotBody({ revision: 8, library: remaining });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const seen = [];
+  client.onStateChange((state) => seen.push(state.library.map((a) => a.id)));
+  const result = await client.deleteImage("u_b");
+  assert.equal(result.error, undefined, "DELETE succeeded");
+  assert.deepEqual(client.getState().library.map((a) => a.id), ["u_a"], "snapshot lost the asset");
+  assert.ok(seen.some((ids) => !ids.includes("u_b")), "subscribers were told — the grid must follow");
+  client.dispose();
+});
+
 test("failed boot lands in offline-failed and writes are gated", async () => {
   const fetchImpl = makeFetch(() => { throw new Error("network down"); });
   const client = flushingClient(fetchImpl);

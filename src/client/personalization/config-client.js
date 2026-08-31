@@ -20,7 +20,9 @@
  *     dirty) so the next 保存 retries on the new baseRevision; a
  *     STORE_READONLY 409 downgrades to read-only with no refetch;
  *   - writes emit `dsh-skins:config-changed` + a BroadcastChannel ping so
- *     other tabs refetch; window focus refetch is the fallback path.
+ *     other tabs refetch; window focus refetch is the fallback path;
+ *   - every applied snapshot emits to local subscribers — including
+ *     same-status refetches, whose silent swaps previously starved the UI.
  */
 
 const CHANNEL = "dsh-skins";
@@ -115,15 +117,21 @@ export function createConfigClient(options = {}) {
       if (body?.mode === "unsupported") {
         snapshot = { ...body, references: {} };
         setStatus("unsupported-readonly");
+        emit(); // same-status swaps must still notify (field report: stale library grid)
         return publicState();
       }
       if (body?.mode === "recovery") {
         snapshot = { ...body };
         setStatus("synced"); // read-only until confirmed; panel offers recovery
+        emit();
         return publicState();
       }
       snapshot = { ...body };
       setStatus("synced");
+      // setStatus only emits on a status TRANSITION — an already-synced
+      // refetch would otherwise swap the snapshot silently and starve every
+      // subscriber (field report: deleted image kept showing in the grid).
+      emit();
       return publicState();
     } catch {
       if (!disposed) setStatus("offline-failed");
