@@ -299,6 +299,25 @@ test("conflict banner renders only while synced (③-3)", async () => {
   assert.ok(textsOf(panel.tree()).includes("personalization.status.unsupported"), "read-only strip instead");
 });
 
+test("save failure surfaces a warning strip carrying the server reason (field report: silent 400)", async () => {
+  const config = makeConfigClient({ status: "synced" });
+  config.flushNow = async () => ({ flushed: 0, blocked: "error", errorMessage: "tgcf.scrim 校验失败（BAD_SHAPE）" });
+  const panel = mountPanel({ skinId: "tgcf", status: "synced", config });
+  await tick();
+  const scrim = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
+  scrim.props.onChange({ target: { value: "0" } });
+  await tick();
+  await findButton(panel.tree(), "personalization.save").props.onClick();
+  await tick();
+  assert.ok(textsOf(panel.tree()).includes("personalization.saveFailed"), "failure strip renders");
+  assert.ok(textsOf(panel.tree()).some((t) => typeof t === "string" && t.includes("BAD_SHAPE")), "the server's reason is surfaced");
+
+  // A fresh edit clears the strip — the next 保存 re-judges from scratch.
+  scrim.props.onChange({ target: { value: "10" } });
+  await tick();
+  assert.equal(textsOf(panel.tree()).includes("personalization.saveFailed"), false, "editing clears the strip");
+});
+
 test("no theme UI and no theme keys remain anywhere (⑦)", () => {
   const panelSource = readFileSync("src/client/personalization/panel.js", "utf8");
   const dictsSource = readFileSync("src/client/dicts.js", "utf8");

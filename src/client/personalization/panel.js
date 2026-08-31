@@ -242,6 +242,7 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     const schema = getSkinSchema(skinId);
     const headerRef = useRef(null);
     const [conflicted, setConflicted] = useState(false);
+    const [saveError, setSaveError] = useState(null);
     useEffect(() => { headerRef.current?.focus?.(); }, []);
 
     if (schema === null) return null;
@@ -255,11 +256,12 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     const save = async () => {
       const result = await configClient.flushNow();
       setConflicted(result?.blocked === "conflict");
+      setSaveError(result?.blocked === "error" ? (result.errorMessage ?? "") : null);
     };
 
     const fieldRows = schema.fields.map((field) => {
       const value = values[field.key];
-      const setValue = (next) => { setConflicted(false); configClient.preview(skinId, field.key, next); };
+      const setValue = (next) => { setConflicted(false); setSaveError(null); configClient.preview(skinId, field.key, next); };
       const common = { field, value, onValue: setValue, disabled: writesBlocked };
       switch (field.type) {
         case "text": return jsx(TextField, { ...common, key: field.key });
@@ -310,6 +312,14 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     if (conflicted && state.status === "synced") {
       statusCluster.push(jsx("div", { key: "conflict", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
         jsx("span", { children: tr("personalization.conflict") }),
+      ] }));
+    }
+    if (saveError !== null) {
+      // A rejected save must never read as "did it save?" — name the failure
+      // and carry the server's reason (field report: silent 400 for days).
+      statusCluster.push(jsx("div", { key: "save-error", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
+        jsx("span", { children: tr("personalization.saveFailed") }),
+        saveError === "" ? null : jsx("div", { className: "dsh-skins-pz-muted", children: saveError }),
       ] }));
     }
     if (state.dirtyCount > 0) {

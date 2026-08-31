@@ -180,8 +180,11 @@ export function createConfigClient(options = {}) {
           return { flushed: 0, blocked: "conflict" };
         }
         if (!response.ok) {
-          // Keep the previews dirty so the panel can retry (design Y6).
-          return { flushed: 0, blocked: "error" };
+          // Keep the previews dirty so the panel can retry (design Y6) — and
+          // NAME the failure: a silent 400 reads as "did it save?" (field
+          // report: the stale-host BAD_SHAPE stayed invisible for days).
+          const errorBody = await response.json().catch(() => null);
+          return { flushed: 0, blocked: "error", errorMessage: errorBody?.error ?? `HTTP ${response.status}` };
         }
         const body = await response.json();
         void body; // drained; the authoritative resync happens in refetch()

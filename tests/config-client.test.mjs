@@ -180,7 +180,7 @@ test("previewReset schedules a delete op; failed writes keep previews dirty for 
   await client.boot();
   client.previewReset("tgcf", "blur");
   fail = true;
-  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "error" });
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "error", errorMessage: "boom" });
   assert.equal(client.getState().dirtyCount, 1, "preview kept dirty after failure");
   assert.deepEqual(client.effectiveOverrides("tgcf"), {}, "reset preview removes the override");
 
@@ -336,6 +336,21 @@ test("HTTP 500 responses land in offline-failed, never synced", async () => {
   await client.boot();
   assert.equal(client.getState().status, "offline-failed");
   assert.equal(client.writeBlocked(), "offline");
+  client.dispose();
+});
+
+test("a non-ok PATCH carries the server error message to the caller (field report)", async () => {
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") return jsonResponse(400, { error: "tgcf.scrim 校验失败（BAD_SHAPE）", code: "INVALID_CONFIG" });
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "scrim", 0);
+  const result = await client.flushNow();
+  assert.equal(result.blocked, "error");
+  assert.equal(result.errorMessage, "tgcf.scrim 校验失败（BAD_SHAPE）");
+  assert.equal(client.getState().dirtyCount, 1, "previews stay dirty for retry");
   client.dispose();
 });
 
