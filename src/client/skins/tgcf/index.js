@@ -230,7 +230,7 @@ export function createTgcfSkin(jsxRuntime) {
     return {
       bodyAttribute: "dshTgcfSkin",
       slogans: values.slogan ?? null,
-      titleBrand: values.titleBrand ?? null,
+      titleBrand: "天官赐福", // static brand segment — the field was removed (v2.4.1 #5)
       favicon: { href: faviconAsset.url, mime: faviconAsset.mime },
       backdrop: {
         imageLight: wallpaperUrl === null ? null : `url("${wallpaperUrl}")`,

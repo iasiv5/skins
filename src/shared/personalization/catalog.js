@@ -84,14 +84,6 @@ export const SKINS = {
         default: { zh: "百无禁忌", en: "No Taboos" },
       },
       {
-        key: "titleBrand",
-        type: "text",
-        scope: "single",
-        labelKey: "personalization.titleBrand",
-        maxLength: 24,
-        default: "天官赐福",
-      },
-      {
         key: "panelOpacity",
         type: "range",
         scope: "single",

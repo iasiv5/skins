@@ -19,7 +19,7 @@ function fixtureSkin() {
       return {
         bodyAttribute: "dshTgcfSkin",
         slogans: values.slogan,
-        titleBrand: values.titleBrand,
+        titleBrand: "天官赐福",
         favicon: { href: assets.favicon?.url ?? "data:image/svg+xml,x", mime: assets.favicon?.mime ?? "image/svg+xml" },
         backdrop: {
           imageLight: `url("${assets.wallpaper?.url ?? "about:blank"}")`,
@@ -101,7 +101,7 @@ test("a crashing projector triggers the defaults-only retry (layer 2)", () => {
     return {
       bodyAttribute: "dshTgcfSkin",
       slogans: defaultsFor("tgcf").slogan,
-      titleBrand: defaultsFor("tgcf").titleBrand,
+      titleBrand: "天官赐福",
       backdrop: null,
     };
   };

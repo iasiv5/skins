@@ -55,11 +55,8 @@ test("validateOverride: unknown skin fields are rejected", () => {
   assert.deepEqual(validateOverride("unknown-skin", "slogan", "x"), { ok: false, code: "UNKNOWN_FIELD" });
 });
 
-test("validateOverride: text single accepts clean strings, rejects long/control values", () => {
-  assert.equal(validateOverride("tgcf", "titleBrand", "天官赐福").ok, true);
-  assert.deepEqual(validateOverride("tgcf", "titleBrand", "a".repeat(25)), { ok: false, code: "BAD_VALUE" });
-  assert.deepEqual(validateOverride("tgcf", "titleBrand", "bad\u0007text"), { ok: false, code: "BAD_VALUE" });
-  assert.deepEqual(validateOverride("tgcf", "titleBrand", 5), { ok: false, code: "BAD_VALUE" });
+test("titleBrand is no longer personalizable (v2.4.1 #5)", () => {
+  assert.deepEqual(validateOverride("tgcf", "titleBrand", "天官赐福"), { ok: false, code: "UNKNOWN_FIELD" });
 });
 
 test("validateOverride: locale text requires complete {zh,en} objects", () => {
@@ -129,7 +126,6 @@ test("mergeValues: defaults fill untouched fields, overrides win when valid", ()
   assert.deepEqual(issues, []);
   assert.deepEqual(values.slogan, { zh: "改", en: "Changed" });
   assert.equal(values.panelOpacity, 60);
-  assert.equal(values.titleBrand, "天官赐福");
   assert.equal(values.wallpaper, "builtin:tgcf:lanterns");
   assert.equal(values.scrim, 30);
 });
@@ -164,12 +160,12 @@ test("mergeValues: unknown skin yields empty values without throwing", () => {
 
 test("accessors expose schema, fields, asset fields and defaults", () => {
   const schema = getSkinSchema("tgcf");
-  assert.equal(schema.fields.length, 6);
-  assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "titleBrand", "panelOpacity", "blur", "scrim"]);
+  assert.equal(schema.fields.length, 5);
+  assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "panelOpacity", "blur", "scrim"]);
   assert.equal(getField("tgcf", "blur").max, 24);
   assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper"]);
   assert.deepEqual(listAssetFields("openbmc").map((field) => field.key), ["wallpaper"]);
-  assert.equal(defaultsFor("tgcf").titleBrand, "天官赐福");
+  assert.equal(defaultsFor("tgcf").titleBrand, undefined);
   assert.equal(defaultsFor("uefi-harness").wallpaper, "builtin:uefi-harness:art");
 });
 

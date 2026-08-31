@@ -11,7 +11,7 @@
 |---|---|
 | 资产 ID | `u_` + `randomUUID().replaceAll("-","")`（32 hex），与全部正则统一（R1） |
 | bodyAttr | `dshTgcfSkin`（沿用现有 camelCase dataset 契约，零 runtime 改动；派生属性 `data-dsh-tgcf-skin`）（R2.3） |
-| titleBrand | 存储值 `天官赐福`（**不含分隔符**；` — ` 归 runtime 所有）（R2.4） |
+| titleBrand | **不可个性化（v2.4.1 #5）**：面板字段移除，`effects.titleBrand` 恒为皮肤静态 title「天官赐福」；存量覆写由加载规范化剔除（§5.5）；` — ` 分隔符仍归 runtime 所有 |
 | SkinEffects | 精确 shape 冻结 + 分层裁决：catalog 提供元数据与纯 merge/校验规则，projector 调用执行并负责资产解析/校验冻结，skin.project 只做业务映射（R2.1/2.2，三轮措辞统一） |
 | 热更新 | 新增 `runtime.updateActive(values)`；mount 事务化（失败逆序清理；替换失败恢复上一套有效 effects）（R2.5） |
 | 面板状态机 | `loading / synced / offline-failed / unsupported-readonly`，仅 `synced` 可持久化（R3） |
@@ -76,7 +76,7 @@ backdrop: {
 {
   bodyAttribute: "dshTgcfSkin",        // 必填；camelCase dataset 键（现有契约），派生属性 data-dsh-tgcf-skin
   slogans: { zh, en } | null,          // 可选；null = 不覆写（宿主词条保持）
-  titleBrand: string | null,           // 可选；不含分隔符；null = 不覆写
+  titleBrand: string | null,           // 静态：恒为皮肤 title（字段已移除，v2.4.1 #5）；不含分隔符
   favicon: { href, mime } | null,      // 可选；href 为 builtin dataURL 或资产 URL
   backdrop: {                           // 可选
     image: string | null,               // 已解析 URL；null = 皮肤无背景覆写
@@ -207,7 +207,6 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 |---|---|---|---|---|---|
 | wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签四选 | `builtin:tgcf:lanterns` | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
-| titleBrand | text×single | maxLength 24 | "天官赐福"（无分隔符） | f.titleBrand | titleBrand |
 | panelOpacity | range×single | 30–100, step 1, unit % | 82 | f.panelOpacity | tokenOverrides(bg-base/sidebar-fill, rgba 派生) |
 | blur | range×single | 0–24, step 1, unit px | 12 | f.blur | backdrop.blur |
 | scrim | range×single | 0–100, step 1, unit % | **30**（单值，亮暗同 α） | f.scrim | backdrop.overlayLight/Dark（单 α 双基色） |
@@ -260,7 +259,7 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 - [ ] tag/version/Release/repo identity 一致
 - [ ] `u_` ID 生成与 DELETE/assets/config 正则完全一致
 - [ ] tgcf body attribute 真实 Chromium mount/unmount 不抛错
-- [ ] titleBrand 不含 runtime 分隔符
+- [ ] titleBrand 静态等于皮肤 title（标签页标题不可个性化，v2.4.1 #5）
 - [ ] SkinEffects shape 与失败回滚语义冻结并有测试
 - [ ] config 未同步时不允许持久化默认值
 - [ ] state 损坏或版本过新时绝不执行破坏性 GC
@@ -291,7 +290,7 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 
 ## 17. 不做清单（v2 + 增补）
 
-v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8→已移除）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。**v2.4 增补**：主题包机制整体移除（§8/§9 原文归档 v2.3 历史，ADR-0002；含其流式落盘升级路径——多用户/分享场景重现时须重新设计评审而非复活旧实现）、拖拽上传、壁纸填充方式（cover/contain/fill）、壁纸位置（上/中/下）、显示/隐藏壁纸开关、多文件同时上传（Q43 裁决不做；参考实现 dsh-custom-skin 有之，本插件保持精简）。
+v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8→已移除）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。**v2.4 增补**：主题包机制整体移除（§8/§9 原文归档 v2.3 历史，ADR-0002；含其流式落盘升级路径——多用户/分享场景重现时须重新设计评审而非复活旧实现）、拖拽上传、壁纸填充方式（cover/contain/fill）、壁纸位置（上/中/下）、显示/隐藏壁纸开关、多文件同时上传（Q43 裁决不做；参考实现 dsh-custom-skin 有之，本插件保持精简）。**v2.4.1 增补**：标签页标题个性化（实测裁决 #5 移除字段；标题品牌段由皮肤静态提供，未来皮肤同此，§10/§0）。
 
 ## 18. 商标与非关联声明（同 v2）
 
@@ -314,6 +313,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.4.1 修订（实测问题 #3）**：面板默认出现横向滚动——宽壳 880px 内容盒装不下两列实占（360 + 520 基准 + padding/border = 535），`flex:0 0` 不可收缩必然溢出。修订：面板列 `flex:0 1 700px` 可收缩 + `overflow-x:hidden` 兜底；宽壳总宽 `min(1105px, 100vw-24px)`；壁纸网格一行 **6** 张（~110×83，内建一排 + 图库一排共两行）；标语 zh/en 输入框由上下堆叠改并排；<904px 堆叠态网格回落 4 列。**级联陷阱记录**：同特异性复位规则必须排在基础规则之后（CSS 数组顺序即 cascade 顺序）——本条 4 列回落与 #2 的滚动复位两次踩中同一陷阱，已在样式数组内加注释。900px 高窗纵向剩 ~43px 滚动，≥~940px 完全无滚动条。
 
 **v2.4.1 修订（用户裁决 #4）**：tgcf 展示文案——卡片 label zh「天官赐福 · 百无禁忌」→「天官赐福」（en 不变）；标语出厂默认 zh「千灯引路 · 长夜同明」→「百无禁忌」，en 采用 README 既有作品副题译法「No Taboos」。同步点：皮肤静态 `slogans` 字典与 catalog slogan 默认**必须一致**（面板默认值与无覆写时的落地文案同源不同处），另含三处测试断言与 README 双语出厂标语提及；已存覆写不受影响（默认只流向未修改字段）。
+
+**v2.4.1 修订（用户裁决 #5）**：标签页标题退出个性化——`titleBrand` 字段从 catalog 移除（tgcf 5 字段：壁纸/标语/面板透明度/模糊/遮罩；未来皮肤不再提供此字段），面板不再渲染该控件。**效果契约不破**：`effects.titleBrand` 保留于 SkinEffects shape（§3a 冻结），来源改为皮肤静态 `title`（project() 恒返回字面量，legacy 回退路径本就是 `skin.title`），runtime 拼装 `会话标题 — 品牌段` 不变。存量 `titleBrand` 覆写由 §5.5 加载规范化自动剔除并落盘（revision+1）。词典键 `personalization.titleBrand` 双语删除；gate 保存流验收改由标语驱动（纯面板选择器断言持久化，§13）。沿用 favicon/颜色静态化同一模式（v2.4）：**删字段不删视觉**。
 
 ## 20. 终审记录
 

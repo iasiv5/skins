@@ -238,33 +238,35 @@ if (gate) {
   await gpage.waitForTimeout(300);
   check(await gpage.locator(".dsh-skins-pop").count() === 0, "Escape closes the combined shell");
 
-  // 3. Explicit-save flow (ADR-0001): edit → 保存 → title changes, survives a
-  //    reload, then 恢复默认 → 保存 restores the factory title (no dirty data
-  //    is left behind on the release machine, M4).
-  await openSwitcher(gpage);
-  await gpage.locator(".dsh-skins-pz-gear").last().click();
-  await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
-  const brandInput = gpage.locator('.dsh-skins-pz-panel input[aria-label="标签页标题"]');
-  await brandInput.fill("验收实验");
+  // 3. Explicit-save flow (ADR-0001): edit the slogan → 保存 → the value
+  //    survives a reload, then 恢复默认 → 保存 restores the factory slogan
+  //    (no dirty data is left behind on the release machine, M4). The tab
+  //    title is a static skin asset since v2.4.1 #5, so the slogan carries
+  //    this flow; persistence is asserted through the panel's own synced
+  //    input, independent of host DOM.
+  const sloganInput = () => gpage.locator('.dsh-skins-pz-panel input[aria-label="标语 (ZH)"]');
+  const openPanel = async () => {
+    await openSwitcher(gpage);
+    await gpage.locator(".dsh-skins-pz-gear").last().click();
+    await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
+  };
+  await openPanel();
+  await sloganInput().fill("验收实验标语");
   await gpage.locator('.dsh-skins-pz-panel button', { hasText: "保存" }).click();
   await gpage.waitForTimeout(800);
-  let title = await gpage.title();
-  check(title.includes("验收实验"), `保存 applies the tab title immediately (${title})`);
+  check(await sloganInput().inputValue() === "验收实验标语", "保存 keeps the edited slogan in the synced panel");
   await gpage.reload();
   await preparePrivateCapture(gpage);
-  title = await gpage.title();
-  check(title.includes("验收实验"), `保存 persists across reload (${title})`);
+  await openPanel();
+  check(await sloganInput().inputValue() === "验收实验标语", "保存 persists across reload");
   // Cleanup: restore defaults and save them back.
-  await openSwitcher(gpage);
-  await gpage.locator(".dsh-skins-pz-gear").last().click();
-  await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
   await gpage.locator('.dsh-skins-pz-panel button', { hasText: "恢复默认" }).click();
   await gpage.locator('.dsh-skins-pz-panel button', { hasText: "保存" }).click();
   await gpage.waitForTimeout(800);
   await gpage.reload();
   await preparePrivateCapture(gpage);
-  title = await gpage.title();
-  check(title.includes("天官赐福"), `恢复默认 restores the factory title (${title})`);
+  await openPanel();
+  check(await sloganInput().inputValue() === "百无禁忌", "恢复默认 restores the factory slogan");
 
   // 4. Static branding: the lantern favicon is a fixed skin asset (Q35).
   const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
