@@ -4,6 +4,12 @@ DSH Web 皮肤插件的个性化语境：三套皮肤（openbmc / uefi-harness /
 
 ## Language
 
+### 皮肤
+
+**官方皮肤**:
+宿主自带的默认外观（DeepSeek Harness），可在外观选择中选择，但不进入个性化目录，没有可编辑字段。
+_Avoid_: 默认皮肤
+
 ### 交互容器
 
 **皮肤切换弹层**:
