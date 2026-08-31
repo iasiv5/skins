@@ -1,4 +1,6 @@
 /** Independent OpenBMC Harness skin. */
+import { resolveImageRef } from "../../../shared/personalization/catalog.js";
+
 export function createOpenBmcHarness(jsxRuntime) {
   const { jsx } = jsxRuntime;
   const react_jsx_runtime = jsxRuntime;
@@ -1680,6 +1682,70 @@ export function createOpenBmcHarness(jsxRuntime) {
     "radial-gradient(1100px 750px at 18% 0%, rgba(0, 150, 200, 0.14), transparent 60%)," +
     "radial-gradient(950px 700px at 85% 100%, rgba(125, 190, 55, 0.09), transparent 55%)";
 
+  /* ================================================================
+   * ⑦b 个性化投影（ADR-0004）：slogan + panelOpacity 单旋钮。
+   * 主 alpha 线性（P/100），每 token 带固定相对增量——增量由烘焙值反推，
+   * 默认 P=55 时派生串与烘焙串逐字节相等（alpha 一律 toFixed(2) 两位小数，
+   * String(60/100) 产 "0.6" ≠ 烘焙 "0.60"，禁用 String）。P=0 纯壁纸
+   * 完全可见；P=100 随动族全钳 1；blur 以默认点为锚二次爬坡，P>55 起
+   * 壁纸 ::before 模糊与面板霜层同步增强（tgcf 同机制）。
+   * ================================================================ */
+  const GLASS_RULE =
+    'body[data-dsh-openbmc-skin] [id="root"]{backdrop-filter:blur(var(--dsh-openbmc-glass-blur,0px))}';
+
+  const SLOGANS = { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" };
+
+  function project(values, assets) {
+    const P = values.panelOpacity;
+    const wallpaper = values.wallpaper;
+    const url = assets?.wallpaper?.url ?? null;
+    const pt = (baked) => Math.min(100, Math.max(0, P + baked - 55));
+    const pct = (points) => (points / 100).toFixed(2);
+    const alpha = (rgb, baked) => `rgba(${rgb}, ${pct(pt(baked))})`;
+
+    // 随动族：字面量烘焙点（亮 / 暗），RGB 逐字取自 ③ 配色块。
+    const riding = {
+      "--dsw-alias-bg-base": { light: ["247, 250, 252", 55], dark: ["12, 26, 38", 55] },
+      "--dsw-alias-bg-module-platform": { light: ["240, 246, 250", 55], dark: ["22, 48, 67", 60] },
+      "--dsw-alias-bg-layer-1": { light: ["255, 255, 255", 48], dark: ["18, 38, 53", 55] },
+      "--dsw-alias-bg-layer-2": { light: ["255, 255, 255", 56], dark: ["22, 48, 67", 60] },
+      "--dsw-alias-bg-layer-3": { light: ["255, 255, 255", 62], dark: ["26, 58, 80", 64] },
+      "--dsw-specific-sidebar-fill": { light: ["238, 246, 251", 60], dark: ["13, 30, 44", 72] },
+      "--dsw-specific-input-major": { light: ["255, 255, 255", 60], dark: ["18, 42, 60", 65] },
+      "--dsw-specific-login-input": { light: ["255, 255, 255", 60], dark: ["18, 42, 60", 65] },
+    };
+    const tokenOverrides = {};
+    for (const [key, modes] of Object.entries(riding)) {
+      tokenOverrides[key] = { light: alpha(modes.light[0], modes.light[1]), dark: alpha(modes.dark[0], modes.dark[1]) };
+    }
+
+    // 纱与旋钮同联动（默认 P 时整串与烘焙 scrim 逐字节相等）；浮层族
+    // （bg-overlay/menu/selector/tip/nav 态/气泡）固定不随旋钮。
+    const scrimLight = `linear-gradient(${alpha("247, 250, 252", 15)} 0%, ${alpha("240, 246, 250", 28)} 100%)` + artLayer;
+    const scrimDark = `linear-gradient(${alpha("7, 14, 22", 10)} 0%, ${alpha("4, 9, 14", 24)} 100%)` + artLayer;
+
+    // legacy 壁纸语义：用户图走裸 url（纱不上用户图）；烘焙分支含占位兜底。
+    const custom = typeof wallpaper === "string" && wallpaper !== "builtin:openbmc:art"
+      && resolveImageRef(wallpaper)?.kind === "user" && url !== null;
+    const imageLight = custom ? `url("${url}")` : (BACKGROUND_ART === "" ? PLACEHOLDER_LIGHT : scrimLight);
+    const imageDark = custom ? `url("${url}")` : (BACKGROUND_ART === "" ? PLACEHOLDER_DARK : scrimDark);
+
+    const blurPx = Math.round(24 * Math.pow(Math.max(0, (P - 55) / 45), 2));
+
+    return {
+      bodyAttribute: "dshOpenbmcSkin",
+      slogans: values.slogan ?? SLOGANS,
+      titleBrand: "OpenBMC Harness",
+      favicon: { href: FAVICON_DATA_URL, mime: FAVICON_MIME },
+      backdrop: { imageLight, imageDark, overlayLight: null, overlayDark: null, blur: blurPx },
+      tokenOverrides,
+      cssVariables: blurPx > 0 ? { "--dsh-openbmc-glass-blur": { light: `${blurPx}px`, dark: `${blurPx}px` } } : null,
+      staticCss: blurPx > 0 ? CSS + "\n" + GLASS_RULE : CSS,
+      decorations: null,
+    };
+  }
+
+
   return {
     id: "openbmc",
     label: "OpenBMC Harness",
@@ -1699,6 +1765,7 @@ export function createOpenBmcHarness(jsxRuntime) {
     scrimDark: SCRIM_DARK,
     placeholderLight: PLACEHOLDER_LIGHT,
     placeholderDark: PLACEHOLDER_DARK,
-    slogans: { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" },
+    slogans: SLOGANS,
+    project,
   };
 }
