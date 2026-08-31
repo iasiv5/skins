@@ -1,6 +1,6 @@
-# dsh-skins 1.0.0 设计文档 v2.5：声明式个性化框架（精简版）+ 「天官赐福」皮肤
+# dsh-skins 1.0.0 设计文档 v2.7：声明式个性化框架（精简版）+ 「天官赐福」皮肤
 
-> 状态：**v2.5**（实测修订轮）。v2.4（Q35–Q53 + 三轮计划评审）记录五项产品裁决：字段精简与 scrim 单值化（§10）、显式保存模型（§7.1，ADR-0001，**v2.5 经 ADR-0003 逆转**）、主题包机制移除（§8/§9 → §17，ADR-0002）、加载时存量规范化（§5.5）、粘连外壳（§7.2）。v2.4.1 记录七项实测修订（§19：卡片随行切换、面板滚动、六列壁纸、展示文案、标签页标题静态化、删除反馈与快照通知、保存失败上浮）。**v2.5：修改即自动保存（ADR-0003，取代 ADR-0001）——「保存/还原」按钮与全部脏态确认移除**（§7.1/§7.2/§19）。v2.3 的 SkinEffects 接口形状（§3a）与 §9a 决策不变。
+> 状态：**v2.7**（legacy 皮肤全面个性化轮）。**v2.7 经 ADR-0004 推翻 §9a：openbmc / uefi-harness 全量开放 slogan + panelOpacity，每皮肤内联 project()（默认 P=55 锚定烘焙视觉），makeLegacyProjector 删除**。v2.4（Q35–Q53 + 三轮计划评审）记录五项产品裁决：字段精简与 scrim 单值化（§10）、显式保存模型（§7.1，ADR-0001，**v2.5 经 ADR-0003 逆转**）、主题包机制移除（§8/§9 → §17，ADR-0002）、加载时存量规范化（§5.5）、粘连外壳（§7.2）。v2.4.1 记录七项实测修订（§19：卡片随行切换、面板滚动、六列壁纸、展示文案、标签页标题静态化、删除反馈与快照通知、保存失败上浮）。**v2.5：修改即自动保存（ADR-0003，取代 ADR-0001）——「保存/还原」按钮与全部脏态确认移除**（§7.1/§7.2/§19）。v2.3 的 SkinEffects 接口形状（§3a）不变；§9a 决策经 ADR-0004 推翻（v2.7）。
 > 版本目标：单版本 **1.0.0** 全量交付，每个 commit 保持 `pnpm run check` 绿色；发布流程见 §16（preflight → tag → tag workflow → Release）。
 
 ---
@@ -214,7 +214,7 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 builtin 资产登记（v2.4.1 #6 起）：`crimson`（花城 · 银蝶灯笼，**默认壁纸**，AI 生成画作）、`pale`（谢怜 · 云海宫阙，AI 生成画作）、`lantern-favicon`（红灯笼 favicon，SVG，仅 builtin、静态引用）。四个代码纹样与 motif select 已删除（Y10/#6）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
 
-旧皮肤：`openbmc`（bodyAttr `dshOpenbmcSkin` 不变）与 `uefi-harness`（`dshUefiHarness`）仅开放 wallpaper 字段（§9a 终态）；**默认投影必须与 0.6.0 行为逐字节等价**（列入兼容测试）。
+旧皮肤：`openbmc`（bodyAttr `dshOpenbmcSkin` 不变）与 `uefi-harness`（`dshUefiHarness`）全量开放标准字段集（v2.7 经 ADR-0004 推翻 §9a 终态）；**默认投影必须与当前烘焙值逐字节等价**（派生串 ≡ 工厂烘焙串，由真实工厂测试与两皮肤契约金值钉死；两皮肤文件在 1.0.0 全程 0 diff，数值上仍 ≡ 0.6.0）。
 
 ## 11. Corner cases 清单（v2 基础上修订）
 
@@ -226,7 +226,7 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 
 - `tests/config-client.test.mjs`：四态状态机全迁移、fetch 晚到×切肤/dispose/乱序、dirty preview 保护、unsupported 只读、BroadcastChannel 去回声；**v2.5**：变更经 400ms 防抖自动发 PATCH（窗口内合并）、409 自动 refetch+重试一次、非 409 失败 errorMessage 上浮
 - runtime：`updateActive` 同 id 热更新、第 N 效果失败前 N−1 全清理、替换失败恢复旧 effects、bodyAttr 实际 DOM 属性、title 无双分隔符
-- 兼容：openbmc/uefi 默认投影 ≡ 0.6.0、state 损坏后 assets 数量不减、unsupported configVersion 后 assets 数量不减、库中未引用图片不被 GC、UUID 生成值与全部正则一致
+- 兼容：openbmc/uefi 默认投影 ≡ 当前烘焙值（ADR-0004；两皮肤文件 0 diff 故数值上仍 ≡ 0.6.0）、state 损坏后 assets 数量不减、unsupported configVersion 后 assets 数量不减、库中未引用图片不被 GC、UUID 生成值与全部正则一致
 - `smoke-test.cjs` 重构：children 位置断言改语义节点定位（v2.4 再降入 `.dsh-skins-pop-main`）
 - **v2.4**：`tests/fake-react.mjs` 共享桩（持久 hook 帧/deps-aware effect/useCallback 记忆化/ref 接线）；`tests/personalization-panel.test.mjs` 走面板公开路径（3 皮肤×双态、恢复默认、清空图库、保存失败警示条、无保存/还原按钮）；`tests/sidebar-switcher.test.mjs` 走壳公开路径（开关/卡片随行/无确认弹窗断言）；store 加载规范化三分支（剔除+落盘 / 干净零写入 / 恢复与未来版零写入）
 - capture-previews 输出名参数化（`--skin tgcf` 不再覆盖 openbmc 图）；**v2.5 gate**：编辑→自动落库→刷新持久证据 + 恢复默认清理步 + 静态 favicon
@@ -344,6 +344,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.5 修订（用户裁决 #16：深色弹层底色与皮肤色系统一）**：产品主反馈深色下官方与 tgcf 的换肤弹层底色「灰灰的」。实测：弹层底色消费 `--dsw-alias-bg-overlay`，openbmc/uefi 均以自身色系覆盖（深冰蓝 rgba(10,22,32,.88) / 深紫 rgba(27,21,54,.88)），而 tgcf 未覆盖、官方无皮肤可覆盖，双双落到宿主中灰默认 `#61666b`——比官方深色主底 `#151517` 亮一大截，观感发闷。修复：①tgcf `tokenOverrides` 增补 `bg-overlay` 常量对（亮=素白 rgba(255,252,246,.82)、暗=墨黑 rgba(24,16,16,.88)，即 panelBase 族、与 openbmc「浮层较实」结构一致）；②官方深色下由换肤器自身 CSS 提供深炭色弹层 `rgba(41,42,44,.97)`——作用域 `body[data-ds-dark-theme]:not([各皮肤 attr])`，只在无皮肤挂载时生效，皮肤态的 token 驱动不受影响（注意 uefi 的 body 属性是 `data-dsh-uefi-harness`，无 `-skin` 后缀）。
 
 **v2.5 修订（裁决 #16 续：浅色弹层控件色调按皮肤色系标准化）**：同一标准推广到弹层控件的交互态——①tgcf `tokenOverrides` 增补控件态常量对：`interactive-bg-hover`（朱红 0.08/0.14 亮暗，对齐 openbmc/uefi 的同结构 alphas）、`interactive-bg-active`（0.14/0.20）、`bg-module-platform`（素白 0.92/墨 0.92）、`sidebar-nav-item-hover/active`（素白 0.6/0.6 与 0.9/0.9）——换肤按钮的悬停、选中卡片底、触发器芯片不再落入宿主中性蓝灰默认。②弹层选中态描边从冻结静态 `--dsw-static-neutral-bluish-400`（蓝灰，与朱红/紫系冲突）改为 **`--dsw-alias-brand-primary`**：各皮肤选中卡片描边即各自品牌主色（tgcf 朱红 #C3272B/#E0564A、openbmc 冰蓝 #0083b0/#3ec1e8、uefi 紫 #6553d8/#a99cff、官方墨黑 #0f1115），浅深两态自动跟随。③修复齿轮按钮悬停的 `--dsh-alias-interactive-bg-hover` 前缀笔误（同 #15 的 dsh/dsw 混淆，死键导致齿轮无悬停反馈）。官方浅色系为黑白极简、本就是宿主默认，无需另调。
+
+**v2.7 增补（legacy 皮肤全面个性化轮，ADR-0004）**：正式推翻 §9a「旧皮肤仅开放 wallpaper + 默认投影与 0.6.0 逐字节等价」终态。openbmc / uefi-harness 全量开放 `slogan`（text×locale，默认=各自工厂静态字典，同源不变量测试钉死）与 `panelOpacity`（range×single，默认 55——由烘焙 bg-base 0.55 反推的校准锚点）。每皮肤内联 `project()`（tgcf 模式，字面量烘焙点表，无共享 helper）：随动 token alpha 线性 `P/100` + 固定增量（默认 P 精确回烘焙值，派生 alpha 一律 `(points/100).toFixed(2)` 两位小数）、scrim 留在 image 串内按 P 计算（不迁 overlay 通道，legacy「纱不上用户图」语义保留）、blur `24·max(0,(P−55)/45)²` 以默认点为锚二次爬坡——P>55 起壁纸 `::before` 模糊与面板霜层同步增强（`runtime.js:132-134`，tgcf 同机制），浮层族 token 固定不随旋钮。`makeLegacyProjector` 零调用者删除；兼容不变量改写为「默认投影派生串 ≡ 当前烘焙串」（真实工厂测试 + 契约金值双重钉死；两皮肤文件 1.0.0 全程 0 diff，数值上仍 ≡ 0.6.0）。升级语义：0.6.0→1.0.0 首升存储/路由/状态机零增量（state 从头创建、默认值永不落盘、零 localStorage 新键、CONFIG_VERSION 不 bump）；降级不对称（0.6.0=孤儿文件无损往返；旧 1.0.0-dev=新字段键被规范化静默剔除 revision+1）登记进发布演练。前瞻原则：官方皮肤永不入目录，未来代码级皮肤一律声明标准字段集（ADR-0004 附录内联 13 项决策清单）。
 
 ## 20. 终审记录
 
