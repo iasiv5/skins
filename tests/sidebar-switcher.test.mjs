@@ -331,6 +331,12 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
     "library delete is a corner badge on the cell, not a button stacked below");
   assert.ok(css.includes("overflow-y:visible"),
     "stacked (<904px) mode hands scrolling back to the whole shell");
+  assert.ok(css.includes("width:min(390px"),
+    "the list column is 360px in BOTH narrow and wide shells (no menu resize on gear click)");
+  assert.ok(css.includes("transition:width .2s ease-out"),
+    "the shell width animates so docking looks smooth");
+  assert.ok(css.includes(".dsh-skins-pop{transition:none}"),
+    "reduced-motion skips the width animation");
 
   const tiny = makeHarness(260);
   await tiny.openShell();
