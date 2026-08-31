@@ -67,14 +67,12 @@ const WALLPAPER_FIELD = {
 export const SKINS = {
   tgcf: {
     builtinAssets: {
-      lanterns: { mime: "image/svg+xml", labelKey: "personalization.tgcf.lanterns" },
-      butterflies: { mime: "image/svg+xml", labelKey: "personalization.tgcf.butterflies" },
-      mountains: { mime: "image/svg+xml", labelKey: "personalization.tgcf.mountains" },
-      maples: { mime: "image/svg+xml", labelKey: "personalization.tgcf.maples" },
+      crimson: { mime: "image/webp", labelKey: "personalization.tgcf.crimson" },
+      pale: { mime: "image/webp", labelKey: "personalization.tgcf.pale" },
       "lantern-favicon": { mime: "image/svg+xml" },
     },
     fields: [
-      { ...WALLPAPER_FIELD, default: "builtin:tgcf:lanterns", builtinChoices: ["lanterns", "butterflies", "mountains", "maples"] },
+      { ...WALLPAPER_FIELD, default: "builtin:tgcf:crimson", builtinChoices: ["crimson", "pale"] },
       {
         key: "slogan",
         type: "text",

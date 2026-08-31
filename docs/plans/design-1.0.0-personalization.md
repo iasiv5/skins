@@ -206,7 +206,7 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 | key | type×scope | 约束 | 出厂默认 | labelKey | 投影目标 |
 |---|---|---|---|---|---|
-| wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签四选 | `builtin:tgcf:lanterns` | f.wallpaper | backdrop.image |
+| wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签二选（v2.4.1 #6：AI 画作取代四个代码纹样） | `builtin:tgcf:crimson` | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
 | panelOpacity | range×single | 30–100, step 1, unit % | 82 | f.panelOpacity | tokenOverrides(bg-base/sidebar-fill, rgba 派生) |
 | blur | range×single | 0–24, step 1, unit px | 12 | f.blur | backdrop.blur |
@@ -291,11 +291,11 @@ v2 的 13 条保留，修订：3（碰撞：高熵 + exclusive create + 重试�
 
 ## 17. 不做清单（v2 + 增补）
 
-v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8→已移除）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。**v2.4 增补**：主题包机制整体移除（§8/§9 原文归档 v2.3 历史，ADR-0002；含其流式落盘升级路径——多用户/分享场景重现时须重新设计评审而非复活旧实现）、拖拽上传、壁纸填充方式（cover/contain/fill）、壁纸位置（上/中/下）、显示/隐藏壁纸开关、多文件同时上传（Q43 裁决不做；参考实现 dsh-custom-skin 有之，本插件保持精简）。**v2.4.1 增补**：标签页标题个性化（实测裁决 #5 移除字段；标题品牌段由皮肤静态提供，未来皮肤同此，§10/§0）。
+v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）、animated WebP（GIF 允许，§8→已移除）、motif 独立字段（并入壁纸 builtin 页签）、完整 E2E 进 CI（本地半自动 gate 替代，CI 编排留 1.x）。**v2.4 增补**：主题包机制整体移除（§8/§9 原文归档 v2.3 历史，ADR-0002；含其流式落盘升级路径——多用户/分享场景重现时须重新设计评审而非复活旧实现）、拖拽上传、壁纸填充方式（cover/contain/fill）、壁纸位置（上/中/下）、显示/隐藏壁纸开关、多文件同时上传（Q43 裁决不做；参考实现 dsh-custom-skin 有之，本插件保持精简）。**v2.4.1 增补**：标签页标题个性化（实测裁决 #5 移除字段；标题品牌段由皮肤静态提供，未来皮肤同此，§10/§0）；四个代码绘制壁纸纹样移除（用户裁决 #6，AI 画作取代，§18/§19）、壁纸按主题成对默认不做（字段模型保持 image×single，留 1.x）。
 
-## 18. 商标与非关联声明（同 v2）
+## 18. 商标与非关联声明（v2.4.1 修订）
 
-README 双语非官方声明；发布前用户终审名称（中性备选「千灯 · 朱红鎏金」）。
+与《天官赐福》版权方无关联、未获授权；不含任何官方素材。**视觉构成（v2.4.1 #6 起）**：出厂壁纸为产品作者提供的 AI 生成粉丝画作（豆包AI 生成，两幅：花城/谢怜，源文件 sha256 见 `wallpapers.js` 头注）；站点图标与飘蝶装饰仍为原创代码绘制 SVG。README 双语保持非官方声明；发布前用户终审名称（中性备选「千灯 · 朱红鎏金」）。
 
 ## 19. v2 → v2.1 变更一览
 
@@ -318,6 +318,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.4.1 修订（用户裁决 #5）**：标签页标题退出个性化——`titleBrand` 字段从 catalog 移除（tgcf 5 字段：壁纸/标语/面板透明度/模糊/遮罩；未来皮肤不再提供此字段），面板不再渲染该控件。**效果契约不破**：`effects.titleBrand` 保留于 SkinEffects shape（§3a 冻结），来源改为皮肤静态 `title`（project() 恒返回字面量，legacy 回退路径本就是 `skin.title`），runtime 拼装 `会话标题 — 品牌段` 不变。存量 `titleBrand` 覆写由 §5.5 加载规范化自动剔除并落盘（revision+1）。词典键 `personalization.titleBrand` 双语删除；gate 保存流验收改由标语驱动（纯面板选择器断言持久化，§13）。沿用 favicon/颜色静态化同一模式（v2.4）：**删字段不删视觉**。
 
 **v2.4.1 修订（实测问题 #4 + 续报：图库删除的反馈与刷新）**：删除反馈——× 点击后整段 DELETE+refetch 飞行期无任何反馈、成功静默，用户无法确认是否删掉。修复：目标格子进入忙碌态（× 变 spinner），飞行期全部删除/上传/清空按钮禁用（单飞防重复 DELETE），结果必播报（成功「已删除：{name}」/ 失败可重试）。**续报根因更深**：播报落地后网格仍不更新——`refetch()` 同状态下经 `setStatus` 不触发 emit，新快照被静默替换、订阅者饿死（上传此前正常仅因 preview emit 顺带读到新快照）。修复见 §7.1：快照落地即无条件通知；上传、跨标签、focus 刷新同享此修复。
+
+**v2.4.1 修订（用户裁决 #6）**：出厂壁纸换装——四个代码绘制 SVG 纹样（祥云灯笼阵/银蝶群/金线山水/红枫落雨）整体移除，改为产品作者提供的两幅 AI 生成粉丝画作（豆包AI）：`builtin:tgcf:crimson`（花城 · 银蝶灯笼，**出厂默认**）与 `builtin:tgcf:pale`（谢怜 · 云海宫阙）。技术通道：1920px WebP q78 内嵌 data-URI（共 +218KB），与 favicon 同为 embed-in-JS、零 asset loader（`src/client/skins/tgcf/wallpapers.js`，头注含源 sha256）。存量旧纹样引用由加载规范化按未知内建键剔除（BAD_ASSET，重选即可）。词典：4 个纹样标签键 → 2 个画作键，「内置纹样」→「内置画作」。§18 声明同步改写；站点图标与飘蝶装饰仍为原创 SVG。壁纸"按主题成对默认"（亮=谢怜/暗=花城）不做——image×single 模型保持，留 1.x。
 
 ## 20. 终审记录
 

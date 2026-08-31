@@ -70,7 +70,7 @@ This section answers: which skins exist and what each feels like.
 ![OpenBMC, light](docs/assets/openbmc-light.webp)
 
 - `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots carry the UEFI Forum's official logo, a gilded circuit-board photo serves as the backdrop, and the final design lands later.
-- `tgcf` (Heaven Official's Blessing · No Taboos) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; every visual is original code-drawn SVG (lanterns & clouds / silver butterflies / gilded mountains / falling maples) and no official artwork is bundled. Vermilion-and-gold dark mode, pale-gold light mode, slogan "No Taboos".
+- `tgcf` (Heaven Official's Blessing · No Taboos) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; the factory wallpapers are AI-generated fan art (made with Doubao, provided by the plugin author), while the site icon and drifting-butterfly decoration remain original code-drawn SVG — no official artwork is bundled. Vermilion-and-gold dark mode, pale-gold light mode, slogan "No Taboos".
 
 ![TGCF, dark](docs/assets/tgcf-dark.webp)
 
@@ -80,7 +80,7 @@ This section answers: what each skin exposes, where settings live, and when edit
 
 Every skin card carries a gear button (with a dot when overrides exist) that docks that skin's personalization panel beside the switcher (stacked vertically on narrow windows):
 
-- **Customizable fields** (fully open on `tgcf`; wallpaper-only on `openbmc` / `uefi-harness`): wallpaper (built-in motifs + a personal library), slogan (zh/en), panel opacity, background blur, scrim strength (one value for both themes). Colours, the site icon and the tab title are fixed skin design and no longer adjustable.
+- **Customizable fields** (fully open on `tgcf`; wallpaper-only on `openbmc` / `uefi-harness`): wallpaper (built-in artwork + a personal library), slogan (zh/en), panel opacity, background blur, scrim strength (one value for both themes). Colours, the site icon and the tab title are fixed skin design and no longer adjustable.
 - **Personal library**: upload PNG / JPEG / WebP / GIF (≤ 20MB each, GIF ≤ 12MP; animated WebP and SVG are rejected), shared by all skins; deleting a referenced image or clearing the library lists every affected skin and field first.
 - **Explicit save**: edits preview live in the UI; pressing Save is what persists them and syncs across tabs; Revert discards every unsaved change in one click (works offline too); leaving with unsaved edits (blank click / switcher button / Escape / collapsing the panel / switching the edit target — including clicking another skin's card or gear in the list) always asks first. While the panel is open, clicking another skin's card moves the panel to that skin.
 - **Storage & upgrades**: configuration and the library live under `$DSH_HOME/dsh-skins/` (isolated from the plugin install directory), so upgrades / rollbacks / one-click updates preserve them by construction; only overrides are stored, and new defaults flow to untouched fields; leftovers of retired fields are cleaned up at load.

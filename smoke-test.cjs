@@ -408,7 +408,7 @@ if (window.__DSH_SKINS__.active() !== "tgcf") throw new Error("tgcf must become 
 if (body.dataset.dshTgcfSkin !== "") throw new Error("tgcf body scope attr missing");
 const tgcfBackdrop = styleTag("tgcf.backdrop");
 if (!tgcfBackdrop || tgcfBackdrop.removed) throw new Error("tgcf backdrop stylesheet missing");
-if (!tgcfBackdrop.textContent.includes("data:image/svg+xml")) throw new Error("tgcf backdrop must embed the builtin lantern SVG");
+if (!tgcfBackdrop.textContent.includes("data:image/webp")) throw new Error("tgcf backdrop must embed the bundled factory wallpaper (WebP)");
 if (!tgcfBackdrop.textContent.includes("filter:blur(12px)")) throw new Error("tgcf backdrop must apply the default 12px wallpaper blur");
 if (!tgcfBackdrop.textContent.includes("linear-gradient(rgba(255,246,234,0.300)")) throw new Error("tgcf scrim overlay must derive from the single-value catalog default 30");
 const tgcfThemeLayer = ctx.theme._layers.get("dsh-skins/tgcf");

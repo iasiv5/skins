@@ -30,7 +30,7 @@ test("asset id pattern accepts hyphenless 32-hex and rejects uuid/other shapes",
   assert.ok(ASSET_ID_PATTERN.test(USER_ID));
   assert.ok(!ASSET_ID_PATTERN.test("u_550e8400-e29b-41d4-a716-446655440000"), "hyphenated UUID must not match");
   assert.ok(!ASSET_ID_PATTERN.test("u_0123456789abcdef0123456789abcdeg"), "non-hex rejected");
-  assert.ok(!ASSET_ID_PATTERN.test("builtin:tgcf:lanterns"));
+  assert.ok(!ASSET_ID_PATTERN.test("builtin:tgcf:crimson"));
   assert.ok(!ASSET_ID_PATTERN.test(""));
 });
 
@@ -85,7 +85,8 @@ test("validateOverride: ranges clamp to min/max in single scopes", () => {
 });
 
 test("validateOverride: image builtin refs must belong to the owning skin", () => {
-  assert.equal(validateOverride("tgcf", "wallpaper", "builtin:tgcf:lanterns").ok, true);
+  assert.equal(validateOverride("tgcf", "wallpaper", "builtin:tgcf:crimson").ok, true);
+  assert.deepEqual(validateOverride("tgcf", "wallpaper", "builtin:tgcf:lanterns"), { ok: false, code: "BAD_ASSET" }, "retired motif refs are rejected (v2.4.1 #6)");
   assert.deepEqual(validateOverride("tgcf", "wallpaper", "builtin:openbmc:art"), { ok: false, code: "BAD_ASSET" });
   assert.deepEqual(validateOverride("tgcf", "wallpaper", "builtin:tgcf:missing"), { ok: false, code: "BAD_ASSET" });
   assert.deepEqual(validateOverride("openbmc", "wallpaper", "builtin:openbmc:art").ok, true);
@@ -126,7 +127,7 @@ test("mergeValues: defaults fill untouched fields, overrides win when valid", ()
   assert.deepEqual(issues, []);
   assert.deepEqual(values.slogan, { zh: "改", en: "Changed" });
   assert.equal(values.panelOpacity, 60);
-  assert.equal(values.wallpaper, "builtin:tgcf:lanterns");
+  assert.equal(values.wallpaper, "builtin:tgcf:crimson");
   assert.equal(values.scrim, 30);
 });
 
@@ -150,7 +151,7 @@ test("mergeValues: image overrides validate against trusted metadata when provid
   assert.deepEqual(ok.issues, []);
 
   const missing = mergeValues("tgcf", { wallpaper: USER_ID }, () => null);
-  assert.equal(missing.values.wallpaper, "builtin:tgcf:lanterns");
+  assert.equal(missing.values.wallpaper, "builtin:tgcf:crimson");
   assert.deepEqual(missing.issues, [{ key: "wallpaper", code: "MISSING_ASSET" }]);
 });
 

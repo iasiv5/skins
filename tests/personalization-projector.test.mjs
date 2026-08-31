@@ -209,7 +209,7 @@ test("a user wallpaper that cannot resolve falls back to the default builtin", (
     assetResolver: semiResolver,
   });
   assert.equal(result.degraded, "defaults");
-  assert.equal(result.effects.backdrop.imageLight.includes("builtin://tgcf/lanterns"), true);
+  assert.equal(result.effects.backdrop.imageLight.includes("builtin://tgcf/crimson"), true);
 });
 
 test("the REAL openbmc and uefi factories project their baked defaults verbatim", async () => {
@@ -246,7 +246,7 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.300),rgba(255,246,234,0.300))");
   assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.300),rgba(14,7,8,0.300))");
   assert.equal(result.effects.backdrop.blur, 12);
-  assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/lanterns")');
+  assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/crimson")');
   // Favicon is a static skin asset since the field was removed.
   assert.equal(result.effects.favicon.href, skin.favicon);
   assert.equal(result.effects.favicon.mime, "image/svg+xml");

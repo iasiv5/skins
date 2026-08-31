@@ -183,7 +183,7 @@ test("load normalization drops unknown keys, stale shapes, dangling refs and orp
   raw.skins.tgcf.accent = { light: "#111111", dark: "#222222" }; // removed field
   raw.skins.tgcf.scrim = { light: 18, dark: 42 }; // stale light/dark pair shape
   raw.skins.tgcf.wallpaper = "u_0123456789abcdef0123456789abcdef"; // dangling user ref
-  raw.skins.removedSkin = { wallpaper: "builtin:tgcf:lanterns" }; // orphan section
+  raw.skins.removedSkin = { wallpaper: "builtin:tgcf:crimson" }; // orphan section
   writeFileSync(statePath, JSON.stringify(raw));
 
   const reopened = makeStore(dir);
