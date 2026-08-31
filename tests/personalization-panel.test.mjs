@@ -155,19 +155,37 @@ test("slogan text edits preview the complete locale object", async () => {
   assert.deepEqual(panel.configClient.calls.preview[1].value, { zh: "新标语", en: "New slogan" });
 });
 
-test("恢复默认 resets every field and flushes the factory values at once", async () => {
+test("恢复默认 confirms with the affected field list; decline is a no-op (user ruling #9)", async () => {
   const panel = mountPanel({ skinId: "tgcf", status: "synced" });
   await tick();
   const scrim = flatten(panel.tree()).find((n) => n.type === "input" && n.props["aria-label"] === "personalization.scrim");
   scrim.props.onChange({ target: { value: "66" } });
   await tick();
-  // The reset button only exists once at least one override is present.
-  const reset = findButton(panel.tree(), "personalization.reset");
-  assert.notEqual(reset, null, "reset offered while overrides exist");
-  await reset.props.onClick();
-  assert.equal(panel.configClient.calls.flushNow, 1, "reset flushes immediately (ADR-0003)");
+  const reset = () => findButton(panel.tree(), "personalization.reset");
+  assert.notEqual(reset(), null, "reset offered while overrides exist");
+
+  // Agreeing: the dialog lists the non-default field(s), then everything
+  // resets and flushes at once (ADR-0003 — immediate and auto-saved).
+  await reset().props.onClick();
+  await tick();
+  assert.equal(panel.confirms.length, 1, "destructive reset asks first");
+  assert.ok(panel.confirms[0].includes("personalization.scrim"), "the affected field is listed");
+  assert.equal(panel.configClient.calls.flushNow, 1, "agreeing flushes the factory values at once");
   assert.deepEqual(panel.configClient.calls.previewReset.map((c) => c.key),
     getSkinSchema("tgcf").fields.map((f) => f.key), "every field reset to factory");
+
+  // Declining: asked again, nothing happens at all. (The agree path above
+  // legitimately emptied the override set, so re-establish one first.)
+  const declineConfirms = [];
+  globalThis.window.confirm = (text) => { declineConfirms.push(text); return false; };
+  scrim.props.onChange({ target: { value: "70" } });
+  await tick();
+  await reset().props.onClick();
+  await tick();
+  assert.equal(declineConfirms.length, 1, "asked again");
+  assert.ok(declineConfirms[0].includes("personalization.scrim"), "affected field listed again");
+  assert.equal(panel.configClient.calls.flushNow, 1, "decline flushes nothing");
+  assert.equal(panel.configClient.calls.previewReset.length, getSkinSchema("tgcf").fields.length, "decline resets nothing");
 });
 
 test("offline: every write path is disabled — edits included (ADR-0003)", async () => {

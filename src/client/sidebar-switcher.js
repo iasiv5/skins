@@ -55,7 +55,6 @@ const CSS = [
   '.dsh-skins-pz-gear{position:relative;flex:none;align-self:center;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
   '.dsh-skins-pz-gear:hover,.dsh-skins-pz-gear:focus-visible,.dsh-skins-pz-gear.touch{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsh-alias-interactive-bg-hover)}',
   '.dsh-skins-pz-gear svg{width:16px;height:16px}',
-  '.dsh-skins-pz-gear-dot{position:absolute;top:-2px;right:-2px;width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-brand-primary,#C3272B);border:1.5px solid var(--dsw-alias-bg-overlay,#fff)}',
   // -- combined shell (Q44/Q46): list column + docked panel column ----------
   '.dsh-skins-pop.dsh-skins-wide{flex-direction:row;align-items:stretch;width:min(1105px,calc(100vw - 24px))}',
   '.dsh-skins-pop-main{display:flex;flex-direction:column;gap:8px;min-width:0}',
@@ -294,7 +293,6 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
         ],
       }, skin.id);
       if (!personalizable) return card;
-      const hasOverride = Object.keys(configClient.effectiveOverrides(skin.id)).length > 0;
       return jsx("div", { className: "dsh-skins-pop-card-row", children: [
         card,
         jsx("button", {
@@ -319,7 +317,6 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           },
           children: [
             jsx(GearIcon, {}),
-            hasOverride ? jsx("span", { className: "dsh-skins-pz-gear-dot", "aria-hidden": "true" }) : null,
           ],
         }, `${skin.id}-gear`),
       ] }, skin.id);

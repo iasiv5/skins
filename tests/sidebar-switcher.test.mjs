@@ -182,6 +182,9 @@ test("① gear opens the docked panel column and focuses the heading", async () 
   assert.notEqual(column, null, "panel column appears beside the list");
   assert.equal(column.props.role, "region");
   assert.equal(column.props["aria-label"], "个性化设置");
+  const gearNode = h.gearButton("tgcf");
+  assert.equal(flatten(gearNode).some((n) => n.props?.className === "dsh-skins-pz-gear-dot"), false,
+    "no override dot on the gear (user ruling #9)");
   const shell = h.shell();
   assert.ok(String(shell.props.className).includes("dsh-skins-wide"), "shell enters wide mode");
   assert.ok(String(shell.props.className).includes("dsh-skins-pop"), "shell keeps the dialog class");

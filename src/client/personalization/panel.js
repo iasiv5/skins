@@ -319,8 +319,15 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
             type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-danger",
             disabled: writesBlocked,
             onClick: () => {
-              // Reset to factory and flush the deletes right away (ADR-0003):
-              // no preview limbo, the wallpaper/artwork returns instantly.
+              // Destructive + immediate (auto-save, ADR-0003) → confirm first,
+              // listing the NON-default fields the reset will visibly change.
+              const affected = schema.fields
+                .filter((field) => overrides[field.key] !== undefined)
+                .map((field) => tr(field.labelKey));
+              const confirmed = window.confirm(tr("personalization.resetConfirm", {
+                fields: affected.length > 0 ? affected.join(tr("personalization.resetJoin")) : "—",
+              }));
+              if (!confirmed) return;
               for (const field of schema.fields) configClient.previewReset(skinId, field.key);
               void configClient.flushNow();
             },
