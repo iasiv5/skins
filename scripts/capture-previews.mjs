@@ -230,25 +230,50 @@ if (gate) {
   await gears.first().focus();
   check(await gears.first().evaluate((node) => node === document.activeElement), "gear is keyboard focusable");
 
-  // 2. Gear opens the personalization panel; Escape returns to the list.
+  // 2. Gear docks the panel column; Escape closes the WHOLE combined shell.
   await gpage.keyboard.press("Enter");
-  await gpage.waitForSelector(".dsh-skins-pz", { timeout: 5_000 });
-  check(true, "personalization panel opens from the gear");
+  await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
+  check(true, "personalization panel docks beside the list");
   await gpage.keyboard.press("Escape");
   await gpage.waitForTimeout(300);
-  check(await gpage.locator(".dsh-skins-pz").count() === 0, "Escape closes back to the skin list");
-  await closeSwitcher(gpage);
+  check(await gpage.locator(".dsh-skins-pop").count() === 0, "Escape closes the combined shell");
 
-  // 3. tgcf branding: favicon swap + rebranded tab title.
-  const title = await gpage.title();
-  check(title.includes(skin === "tgcf" ? "天官赐福" : skin), `tab title rebranded (${title})`);
-  const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
-  check(typeof favicon === "string" && favicon.length > 0, "custom favicon link present");
-
-  // 4. Personalization panel shot for records (docs/assets/<skin>-personalize).
+  // 3. Explicit-save flow (ADR-0001): edit → 保存 → title changes, survives a
+  //    reload, then 恢复默认 → 保存 restores the factory title (no dirty data
+  //    is left behind on the release machine, M4).
   await openSwitcher(gpage);
   await gpage.locator(".dsh-skins-pz-gear").last().click();
-  await gpage.waitForSelector(".dsh-skins-pz", { timeout: 5_000 });
+  await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
+  const brandInput = gpage.locator('.dsh-skins-pz-panel input[aria-label="标签页标题"]');
+  await brandInput.fill("验收实验");
+  await gpage.locator('.dsh-skins-pz-panel button', { hasText: "保存" }).click();
+  await gpage.waitForTimeout(800);
+  let title = await gpage.title();
+  check(title.includes("验收实验"), `保存 applies the tab title immediately (${title})`);
+  await gpage.reload();
+  await preparePrivateCapture(gpage);
+  title = await gpage.title();
+  check(title.includes("验收实验"), `保存 persists across reload (${title})`);
+  // Cleanup: restore defaults and save them back.
+  await openSwitcher(gpage);
+  await gpage.locator(".dsh-skins-pz-gear").last().click();
+  await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
+  await gpage.locator('.dsh-skins-pz-panel button', { hasText: "恢复默认" }).click();
+  await gpage.locator('.dsh-skins-pz-panel button', { hasText: "保存" }).click();
+  await gpage.waitForTimeout(800);
+  await gpage.reload();
+  await preparePrivateCapture(gpage);
+  title = await gpage.title();
+  check(title.includes("天官赐福"), `恢复默认 restores the factory title (${title})`);
+
+  // 4. Static branding: the lantern favicon is a fixed skin asset (Q35).
+  const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
+  check(typeof favicon === "string" && favicon.length > 0, "static skin favicon present");
+
+  // 5. Personalization panel shot for records (docs/assets/<skin>-personalize).
+  await openSwitcher(gpage);
+  await gpage.locator(".dsh-skins-pz-gear").last().click();
+  await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
   await writeShot(`${skin}-personalize.webp`, await toWebp(gpage, await gpage.screenshot()));
   await closeSwitcher(gpage);
 
