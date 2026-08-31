@@ -240,7 +240,16 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     const state = useConfigState();
     const schema = getSkinSchema(skinId);
     const headerRef = useRef(null);
-    useEffect(() => { headerRef.current?.focus?.(); }, []);
+    // In wide mode the panel mounts to the shell's right while the shell is
+    // still narrow. Focus the heading without asking the shell to
+    // horizontally scroll it into view; that transient scrollLeft used to
+    // shove the list column left and make expansion look like a bounce
+    // (field issue #12). In stacked mode, retain normal focus scrolling so
+    // keyboard users are brought down to the newly mounted panel.
+    const wideLayout = typeof window !== "undefined" && window.innerWidth >= 905;
+    useEffect(() => {
+      headerRef.current?.focus?.(wideLayout ? { preventScroll: true } : undefined);
+    }, []);
 
     if (schema === null) return null;
     const writesBlocked = state.status !== "synced" || state.mode === "recovery";

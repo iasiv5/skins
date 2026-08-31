@@ -117,7 +117,7 @@ function makeHarness(viewportHeight = 900) {
     // rerenders recreate node objects and refs follow the newest node.
     for (const node of [...flatten(tree), ...inShell()]) {
       if (node.props?.tabIndex === -1 && node.props?.role === "heading" && node.focus === undefined) {
-        node.focus = () => dom.focused.push("panel-heading");
+        node.focus = (options) => dom.focused.push(options?.preventScroll ? "panel-heading-prevent-scroll" : "panel-heading");
       }
       if (node.type === "button" && String(node.props.className).includes("dsh-skins-switcher-btn") && node.focus === undefined) {
         node.focus = () => dom.focused.push("switcher-trigger");
@@ -182,6 +182,8 @@ test("① gear opens the docked panel column and focuses the heading", async () 
   assert.notEqual(column, null, "panel column appears beside the list");
   assert.equal(column.props.role, "region");
   assert.equal(column.props["aria-label"], "个性化设置");
+   assert.ok(h.dom.focused.includes("panel-heading-prevent-scroll"),
+     "panel heading receives focus without scrolling the transitioning shell");
   const gearNode = h.gearButton("tgcf");
   assert.equal(flatten(gearNode).some((n) => n.props?.className === "dsh-skins-pz-gear-dot"), false,
     "no override dot on the gear (user ruling #9)");
