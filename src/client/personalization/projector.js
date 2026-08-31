@@ -13,9 +13,9 @@
  *   degraded:"failed"   even defaults failed → effects:null; the RUNTIME
  *                       fails closed (restore previous effects / official)
  *
- * Legacy skins (openbmc / uefi-harness) do not declare `project`; their
- * effects come from makeLegacyProjector, whose default output is
- * byte-equivalent to 0.6.0 behaviour (design §9).
+ * Every catalog skin owns its `project` (ADR-0004): legacy adapters are
+ * gone. A catalog skin without a `project` fails closed through the
+ * three-layer fallback (pipeline error → defaults → effects:null).
  */
 
 import {
@@ -129,50 +129,6 @@ export function normalizeEffects(draft) {
 }
 
 /**
- * Effects adapter for legacy factories (no `project`). Default output is
- * byte-equivalent to the pre-personalization runtime: the baked
- * art/scrim/placeholder strings stay verbatim, and only a user-uploaded
- * wallpaper swaps the backdrop layers.
- */
-export function makeLegacyProjector(skin) {
-  const legacyDefaultRef = `builtin:${skin.id}:art`;
-  return function legacyProject(values, assets) {
-    const wallpaper = values?.wallpaper;
-    const url = assets?.wallpaper?.url ?? null;
-    const custom = typeof wallpaper === "string" && wallpaper !== legacyDefaultRef
-      && resolveImageRef(wallpaper)?.kind === "user" && url !== null;
-    const backdrop = custom
-      ? {
-        // Custom wallpaper: the resolved URL replaces the baked layers;
-        // legacy gradient overlays do not apply to user images.
-        imageLight: `url("${url}")`,
-        imageDark: `url("${url}")`,
-        overlayLight: null,
-        overlayDark: null,
-        blur: 0,
-      }
-      : {
-        imageLight: skin.art === "" ? skin.placeholderLight : skin.scrimLight,
-        imageDark: skin.art === "" ? skin.placeholderDark : skin.scrimDark,
-        overlayLight: null,
-        overlayDark: null,
-        blur: 0,
-      };
-    return {
-      bodyAttribute: skin.bodyAttr,
-      slogans: skin.slogans ?? null,
-      titleBrand: skin.title ?? null,
-      favicon: skin.favicon ? { href: skin.favicon, mime: skin.faviconMime } : null,
-      backdrop,
-      tokenOverrides: null,
-      cssVariables: null,
-      staticCss: typeof skin.css === "string" ? skin.css : null,
-      decorations: null,
-    };
-  };
-}
-
-/**
  * Project a skin. `context` supplies:
  *   assetResolver(ref) → { url, mime } | null   (builtin table / asset route)
  *   metaProvider(id)   → AssetMeta | null       (trusted library metadata)
@@ -183,7 +139,7 @@ export function projectSkin(skin, rawOverrides, context = {}) {
     // Skin outside the catalog: no personalization contract at all.
     return { effects: null, issues: [], degraded: "failed" };
   }
-  const project = typeof skin.project === "function" ? skin.project : makeLegacyProjector(skin);
+  const project = skin.project;
 
   const attempt = (overrides) => {
     const { values, issues } = mergeValues(skin.id, overrides, context.metaProvider);

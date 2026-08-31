@@ -49,24 +49,6 @@ function resolver(ref) {
   return { url: `/dsh-skins/assets/${ref.id}.png`, mime: "image/png" };
 }
 
-/** A legacy openbmc-like fixture with baked properties and no project(). */
-function legacySkin() {
-  return {
-    id: "openbmc",
-    bodyAttr: "dshOpenbmcSkin",
-    slogans: { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" },
-    title: "OpenBMC Harness",
-    favicon: "data:image/png;base64,AAA",
-    faviconMime: "image/png",
-    css: "body[data-dsh-openbmc-skin]{background:#001}",
-    art: "data:image/webp;base64,BBB",
-    scrimLight: "url(data:image/webp;base64,BBB), linear-gradient(#fff,#eee)",
-    scrimDark: "url(data:image/webp;base64,BBB), linear-gradient(#000,#111)",
-    placeholderLight: "linear-gradient(#fff,#eee)",
-    placeholderDark: "linear-gradient(#000,#111)",
-  };
-}
-
 test("projection with overrides succeeds without degradation", () => {
   const result = projectSkin(fixtureSkin(), {
     slogan: { zh: "自定义", en: "Custom" },
@@ -158,43 +140,6 @@ test("malformed effects shapes are rejected by normalizeEffects", () => {
     bodyAttribute: "ok", slogans: null, titleBrand: null, favicon: null,
     backdrop: null, tokenOverrides: null, cssVariables: null, staticCss: null, decorations: null,
   });
-});
-
-test("legacy skins project byte-equivalent defaults without a project function", () => {
-  const result = projectSkin(legacySkin(), {}, { assetResolver: resolver });
-  assert.equal(result.degraded, "none");
-  const effects = result.effects;
-  assert.equal(effects.bodyAttribute, "dshOpenbmcSkin");
-  assert.deepEqual(effects.slogans, { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" });
-  assert.equal(effects.titleBrand, "OpenBMC Harness");
-  assert.deepEqual(effects.favicon, { href: "data:image/png;base64,AAA", mime: "image/png" });
-  // Exact baked strings, byte-for-byte (design: 0.6.0 equivalence).
-  assert.equal(effects.backdrop.imageLight, "url(data:image/webp;base64,BBB), linear-gradient(#fff,#eee)");
-  assert.equal(effects.backdrop.imageDark, "url(data:image/webp;base64,BBB), linear-gradient(#000,#111)");
-  assert.equal(effects.backdrop.blur, 0);
-  assert.equal(effects.staticCss, "body[data-dsh-openbmc-skin]{background:#001}");
-});
-
-test("legacy skins swap the backdrop only for user wallpapers", () => {
-  const overrides = { wallpaper: "u_0123456789abcdef0123456789abcdef" };
-  const result = projectSkin(legacySkin(), overrides, { assetResolver: resolver });
-  assert.equal(result.degraded, "none");
-  assert.equal(result.effects.backdrop.imageLight, 'url("/dsh-skins/assets/u_0123456789abcdef0123456789abcdef.png")');
-  assert.equal(result.effects.backdrop.imageDark, 'url("/dsh-skins/assets/u_0123456789abcdef0123456789abcdef.png")');
-  // The default builtin ref keeps legacy visuals even when resolved.
-  const builtinDefault = projectSkin(legacySkin(), { wallpaper: "builtin:openbmc:art" }, { assetResolver: resolver });
-  assert.equal(
-    builtinDefault.effects.backdrop.imageLight,
-    "url(data:image/webp;base64,BBB), linear-gradient(#fff,#eee)",
-  );
-});
-
-test("placeholder path applies when a legacy skin has no art", () => {
-  const skin = legacySkin();
-  skin.art = "";
-  const result = projectSkin(skin, {}, { assetResolver: resolver });
-  assert.equal(result.effects.backdrop.imageLight, "linear-gradient(#fff,#eee)");
-  assert.equal(result.effects.backdrop.imageDark, "linear-gradient(#000,#111)");
 });
 
 test("skins outside the catalog fail closed with no effects", () => {
