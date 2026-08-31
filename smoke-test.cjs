@@ -269,7 +269,13 @@ const openTree = switcher.comp({ wide: true });
 const portal = openTree.props.children[1];
 if (!portal?.$$portal) throw new Error("open switcher should render a portal");
 const panel = portal.children;
-const panelChildren = panel.props.children;
+// Combined shell (Q46): the list lives inside .dsh-skins-pop-main.
+const shellChildren = panel.props.children;
+const mainColumn = Array.isArray(shellChildren)
+  ? shellChildren.find((node) => String(node?.props?.className ?? "").includes("dsh-skins-pop-main"))
+  : null;
+if (!mainColumn) throw new Error("combined shell must wrap the list in dsh-skins-pop-main");
+const panelChildren = mainColumn.props.children;
 if (!Array.isArray(panelChildren)) throw new Error("list view must render a section array");
 
 // Semantic node location (no positional coupling to section order).

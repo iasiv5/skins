@@ -56,6 +56,14 @@ const CSS = [
   '.dsh-skins-pz-gear:hover,.dsh-skins-pz-gear:focus-visible,.dsh-skins-pz-gear.touch{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsh-alias-interactive-bg-hover)}',
   '.dsh-skins-pz-gear svg{width:16px;height:16px}',
   '.dsh-skins-pz-gear-dot{position:absolute;top:-2px;right:-2px;width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-brand-primary,#C3272B);border:1.5px solid var(--dsw-alias-bg-overlay,#fff)}',
+  // -- combined shell (Q44/Q46): list column + docked panel column ----------
+  '.dsh-skins-pop.dsh-skins-wide{flex-direction:row;align-items:stretch;width:min(880px,calc(100vw - 24px))}',
+  '.dsh-skins-pop-main{display:flex;flex-direction:column;gap:8px;min-width:0}',
+  '.dsh-skins-pop.dsh-skins-wide .dsh-skins-pop-main{flex:0 0 360px}',
+  '.dsh-skins-pz-panel{flex:0 0 520px;min-width:0;display:flex;flex-direction:column;gap:10px;padding-left:14px;border-left:1px solid var(--dsw-alias-border-l2);transform:translateX(16px);opacity:0;animation:dsh-skins-pz-in .2s ease-out forwards}',
+  '@keyframes dsh-skins-pz-in{to{transform:none;opacity:1}}',
+  '@media (prefers-reduced-motion:reduce){.dsh-skins-pz-panel{animation:none;transform:none;opacity:1}}',
+  '@media (max-width:904px){.dsh-skins-pop.dsh-skins-wide{flex-direction:column;width:min(360px,calc(100vw - 24px))}.dsh-skins-pz-panel{flex-basis:auto;padding-left:0;border-left:0;border-top:1px solid var(--dsw-alias-border-l2);padding-top:12px;transform:translateY(12px)}}',
   '.dsh-skins-pz{display:flex;flex-direction:column;gap:10px}',
   '.dsh-skins-pz-head{display:flex;align-items:center;gap:8px}',
   '.dsh-skins-pz-head .dsh-skins-pop-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none}',
@@ -171,13 +179,38 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     const [themePreference, setThemePreference] = react.useState(() => ctx.theme?.getTheme?.().preference ?? "system");
     const buttonRef = react.useRef(null);
 
-    // Closing the popover flushes pending personalization writes (design Y6).
+    // Closing the shell clears the panel state. It NEVER flushes: with the
+    // explicit-save model (ADR-0001) leaving is either a confirmed discard
+    // (confirmLeave below) or a clean exit — nothing auto-saves (R1).
     react.useEffect(() => {
       if (open) return undefined;
       setPersonalizeId(null);
-      configClient?.flushNow();
       return undefined;
     }, [open]);
+
+    /**
+     * The five leave channels — blank click / switcher button / Escape /
+     * gear collapse / switching the panel target to another skin — all pass
+     * through here. Dirty edits → one confirm; agree = discard via restore()
+     * then continue, refuse = nothing changes. MUST run before runtime.select
+     * so a refusal cannot leave an active=B/panel=A half-state (③-2).
+     */
+    function confirmLeave() {
+      if (personalizeId === null) return true;
+      if (configClient.getState().dirtyCount === 0) return true;
+      if (typeof window !== "undefined" && !window.confirm(localeTranslate("personalization.dirtyLeave"))) {
+        return false;
+      }
+      configClient.restore();
+      return true;
+    }
+
+    const closeShell = () => {
+      if (!confirmLeave()) return;
+      setOpen(false);
+      // The gear unmounts with the shell; focus lands on the persistent trigger.
+      buttonRef.current?.focus?.();
+    };
 
     react.useEffect(() => {
       if (!open) return undefined;
@@ -185,16 +218,16 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
         const node = event.target;
         if (!node || typeof node.closest !== "function") return;
         if (node.closest(".dsh-skins-pop, .dsh-skins-switcher-wrap")) return;
-        setOpen(false);
+        closeShell();
       };
-      const onKey = (event) => { if (event.key === "Escape") setOpen(false); };
+      const onKey = (event) => { if (event.key === "Escape") closeShell(); };
       document.addEventListener("pointerdown", onPointer, true);
       window.addEventListener("keydown", onKey);
       return () => {
         document.removeEventListener("pointerdown", onPointer, true);
         window.removeEventListener("keydown", onKey);
       };
-    }, [open]);
+    }, [open, personalizeId]);
 
     react.useEffect(() => {
       const onChange = () => setActiveId(runtime.active());
@@ -261,10 +294,18 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           title: localeTranslate("personalization.title"),
           "aria-expanded": personalizeId === skin.id,
           onClick: () => {
+            // Guard BEFORE runtime.select (③-2): switching the panel target or
+            // collapsing the panel with dirty edits asks first; refuse keeps
+            // both the active skin and the panel target untouched.
+            const leavingPanel = personalizeId !== null;
+            if (leavingPanel && !confirmLeave()) return;
             // Opening the panel selects the skin so edits preview live.
             runtime.select(skin.id);
             setActiveId(runtime.active());
             setPersonalizeId(personalizeId === skin.id ? null : skin.id);
+            if (personalizeId === skin.id) {
+              try { document.getElementById(`${skin.id}-gear`)?.focus?.(); } catch {}
+            }
           },
           children: [
             jsx(GearIcon, {}),
@@ -275,25 +316,34 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     });
 
     const showPersonalization = personalizeId !== null && PersonalizationPanel !== null;
+    // Wide shell (Q46): list column (360px) + panel column (520px) in one
+    // dialog; below 904px the CSS stacks them. Clamp so the wide shell never
+    // overflows the right edge.
+    const shellLeft = box === null ? undefined
+      : showPersonalization && typeof window !== "undefined"
+        ? Math.max(12, Math.min(box.left, window.innerWidth - 892))
+        : box.left;
     const panel = open && box && typeof document !== "undefined"
       ? reactDom.createPortal(jsx("div", {
-        className: "dsh-skins-pop",
+        className: `dsh-skins-pop${showPersonalization ? " dsh-skins-wide" : ""}`,
         role: "dialog",
         "aria-label": showPersonalization ? localeTranslate("personalization.title") : tr("skins.switch"),
-        style: { left: box.left, bottom: box.bottom },
-        children: showPersonalization
-          ? jsx(PersonalizationPanel, {
-            skinId: personalizeId,
-            onBack: () => setPersonalizeId(null),
-          })
-          : [
+        style: { left: shellLeft, bottom: box.bottom },
+        children: [
+          jsx("div", { key: "main", className: "dsh-skins-pop-main", children: [
             jsx("div", { key: "appearance", className: "dsh-skins-pop-title", children: tr("appearance.title") }),
             jsx("div", { key: "grid", className: "dsh-skins-theme-grid", children: themeCards }),
             jsx("div", { key: "d1", className: "dsh-skins-pop-divider", "aria-hidden": "true" }),
             jsx("div", { key: "skins", className: "dsh-skins-pop-title", children: tr("skins.title") }),
             ...skinCards,
             jsx(UpdatePanel, { key: "update", open, tr }),
-          ],
+          ] }),
+          showPersonalization ? jsx("div", {
+            key: "panel", className: "dsh-skins-pz-panel",
+            role: "region", "aria-label": localeTranslate("personalization.panelLabel"),
+            children: jsx(PersonalizationPanel, { skinId: personalizeId }),
+          }) : null,
+        ],
       }), document.body)
       : null;
 
@@ -307,7 +357,7 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           "aria-label": tr("skins.switch"),
           "aria-expanded": open,
           title: tr("skins.switch"),
-          onClick: () => open ? setOpen(false) : openPopover(),
+          onClick: () => { if (open) closeShell(); else openPopover(); },
           children: [jsx(SwitcherIcon, {}), wide ? jsx("span", { children: tr("skins.switch") }) : null],
         }),
         panel,

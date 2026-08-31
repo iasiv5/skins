@@ -20,7 +20,12 @@ export function createFakeReact() {
     queueMicrotask(() => {
       renderScheduled = false;
       rootThunk();
+      drainEffects();
     });
+  }
+
+  function drainEffects() {
+    while (pendingEffects.length > 0) pendingEffects.shift()();
   }
 
   function slot() {
@@ -38,10 +43,18 @@ export function createFakeReact() {
     }];
   }
 
-  function useEffect(effect) {
+  function useEffect(effect, deps) {
     const s = slot();
-    if (!s.ran) {
+    // Deps-aware: re-run when the dep array changes (shallow), mirroring the
+    // open/close listener effects of the switcher.
+    const changed = !s.ran
+      || deps === undefined
+      || s.deps === undefined
+      || deps.length !== s.deps.length
+      || deps.some((d, i) => d !== s.deps[i]);
+    if (changed) {
       s.ran = true;
+      s.deps = deps;
       pendingEffects.push(effect);
     }
   }
@@ -50,6 +63,14 @@ export function createFakeReact() {
     const s = slot();
     if (!("ref" in s)) s.ref = { current: initial };
     return s.ref;
+  }
+
+  // Memoized per slot like the real hook — returning a fresh closure every
+  // render would flip every [fn] dep array into an infinite effect loop.
+  function useCallback(fn) {
+    const s = slot();
+    if (!("cb" in s)) s.cb = fn;
+    return s.cb;
   }
 
   function instantiate(element, path = "root") {
@@ -75,23 +96,24 @@ export function createFakeReact() {
       }
     }
     const children = element.props?.children;
-    return {
+    const node = {
       ...element,
       props: {
         ...element.props,
         children: children === undefined ? undefined : instantiate(children, `${path}/${String(element.type)}`),
       },
     };
+    // Wire object refs so focus management is observable in tests.
+    if (node.props.ref && typeof node.props.ref === "object") node.props.ref.current = node;
+    return node;
   }
 
   return {
-    useState, useEffect, useRef, instantiate,
+    useState, useEffect, useRef, useCallback, instantiate,
     render(thunk) {
       rootThunk = thunk;
       const tree = thunk();
-      queueMicrotask(() => {
-        while (pendingEffects.length > 0) pendingEffects.shift()();
-      });
+      queueMicrotask(drainEffects);
       return tree;
     },
   };
