@@ -201,12 +201,12 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 ## 10. tgcf 完整 catalog 表（R6.4，冻结）
 
-皮肤 id `tgcf`；bodyAttr `dshTgcfSkin`（CSS 作用域 `body[data-dsh-tgcf-skin]`）；label zh「天官赐福 · 百无禁忌」en「Heaven Official's Blessing」。
+皮肤 id `tgcf`；bodyAttr `dshTgcfSkin`（CSS 作用域 `body[data-dsh-tgcf-skin]`）；label zh「天官赐福」en「Heaven Official's Blessing」。
 
 | key | type×scope | 约束 | 出厂默认 | labelKey | 投影目标 |
 |---|---|---|---|---|---|
 | wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签四选 | `builtin:tgcf:lanterns` | f.wallpaper | backdrop.image |
-| slogan | text×locale | maxLength 40 | {zh:"千灯引路 · 长夜同明", en:"A thousand lights before the dawn"} | f.slogan | slogans |
+| slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
 | titleBrand | text×single | maxLength 24 | "天官赐福"（无分隔符） | f.titleBrand | titleBrand |
 | panelOpacity | range×single | 30–100, step 1, unit % | 82 | f.panelOpacity | tokenOverrides(bg-base/sidebar-fill, rgba 派生) |
 | blur | range×single | 0–24, step 1, unit px | 12 | f.blur | backdrop.blur |
@@ -312,6 +312,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.4.1 修订（实测问题 #2）**：面板滚动与样式补全。三层叠加缺陷——①壳以底锚点向上生长而 CSS `max-height:100vh−24px` 不扣锚点偏移，矮视口下壳顶滑出屏幕且壳内无溢出，内容既看不见也滚不到；②T5 重写时 7 个面板类（`pz-cell`/`pz-del`/`pz-rowbtns`/`pz-actions`/`pz-cluster`/`pz-primary`/`pz-danger`）写了 JSX 未写 CSS——图库"×"删除钮被堆在缩略图下方（每行多占 ~26px，设计语义是角标删除）、Q50 的 sticky 常驻操作条实际未落地；③宽模式面板列无自身滚动区，内容以 `overflow:visible` 溢出壳圆角边框。修复：壳高 JS 钳制（见 §7.2）；补齐 7 类样式（角标删除、sticky 操作条、状态簇纵排、主/危险按钮强调）；宽模式面板列独立滚动、堆叠态整壳滚动。
 
 **v2.4.1 修订（实测问题 #3）**：面板默认出现横向滚动——宽壳 880px 内容盒装不下两列实占（360 + 520 基准 + padding/border = 535），`flex:0 0` 不可收缩必然溢出。修订：面板列 `flex:0 1 700px` 可收缩 + `overflow-x:hidden` 兜底；宽壳总宽 `min(1105px, 100vw-24px)`；壁纸网格一行 **6** 张（~110×83，内建一排 + 图库一排共两行）；标语 zh/en 输入框由上下堆叠改并排；<904px 堆叠态网格回落 4 列。**级联陷阱记录**：同特异性复位规则必须排在基础规则之后（CSS 数组顺序即 cascade 顺序）——本条 4 列回落与 #2 的滚动复位两次踩中同一陷阱，已在样式数组内加注释。900px 高窗纵向剩 ~43px 滚动，≥~940px 完全无滚动条。
+
+**v2.4.1 修订（用户裁决 #4）**：tgcf 展示文案——卡片 label zh「天官赐福 · 百无禁忌」→「天官赐福」（en 不变）；标语出厂默认 zh「千灯引路 · 长夜同明」→「百无禁忌」，en 采用 README 既有作品副题译法「No Taboos」。同步点：皮肤静态 `slogans` 字典与 catalog slogan 默认**必须一致**（面板默认值与无覆写时的落地文案同源不同处），另含三处测试断言与 README 双语出厂标语提及；已存覆写不受影响（默认只流向未修改字段）。
 
 ## 20. 终审记录
 

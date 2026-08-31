@@ -81,7 +81,7 @@ export const SKINS = {
         scope: "locale",
         labelKey: "personalization.slogan",
         maxLength: 40,
-        default: { zh: "千灯引路 · 长夜同明", en: "A thousand lights before the dawn" },
+        default: { zh: "百无禁忌", en: "No Taboos" },
       },
       {
         key: "titleBrand",

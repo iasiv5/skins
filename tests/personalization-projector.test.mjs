@@ -255,5 +255,5 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-text"], { light: "#C9A227", dark: "#D4AF37" });
   assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-bubble"], { light: "#C3272B", dark: "#8E2A2F" });
   assert.ok(result.effects.tokenOverrides["--dsw-alias-bg-base"].light.startsWith("rgba(255,252,246,"));
-  assert.deepEqual(result.effects.slogans, { zh: "千灯引路 · 长夜同明", en: "A thousand lights before the dawn" });
+  assert.deepEqual(result.effects.slogans, { zh: "百无禁忌", en: "No Taboos" });
 });

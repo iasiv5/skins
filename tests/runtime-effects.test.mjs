@@ -164,7 +164,7 @@ test("N1: a successful hot-update keeps the live skin fully intact", () => {
     title: dom.document.title,
   };
   assert.ok(before.css && before.backdrop && before.attr && before.layer);
-  assert.equal(before.slogan, "千灯引路 · 长夜同明");
+  assert.equal(before.slogan, "百无禁忌");
   assert.equal(before.title, "标题实验 — 天官赐福");
 
   // The production wiring fires this on every config sync (page load).
@@ -174,7 +174,7 @@ test("N1: a successful hot-update keeps the live skin fully intact", () => {
   assert.ok(dom.styleTag("dsh-skins/tgcf.css"), "skin css tag must survive");
   assert.ok(dom.styleTag("dsh-skins/tgcf.backdrop.css"), "backdrop tag must survive");
   assert.equal(dom.document.body.dataset.dshTgcfSkin !== undefined, true, "body scope attr must survive");
-  assert.equal(ctx.locale.dicts.get("conversation").get("zh")["hero.headline"], "千灯引路 · 长夜同明");
+  assert.equal(ctx.locale.dicts.get("conversation").get("zh")["hero.headline"], "百无禁忌");
   assert.ok(ctx.layers.get("dsh-skins/tgcf"), "token layer must survive");
   assert.equal(dom.document.title, "标题实验 — 天官赐福");
   assert.equal(runtime.active(), "tgcf");
@@ -209,7 +209,7 @@ test("N1: a failed same-skin rebuild restores the previous effects", () => {
   assert.ok(dom.styleTag("dsh-skins/tgcf.css"));
   assert.ok(dom.styleTag("dsh-skins/tgcf.backdrop.css"));
   assert.equal(dom.document.body.dataset.dshTgcfSkin, "");
-  assert.equal(ctx.locale.dicts.get("conversation").get("zh")["hero.headline"], "千灯引路 · 长夜同明");
+  assert.equal(ctx.locale.dicts.get("conversation").get("zh")["hero.headline"], "百无禁忌");
   assert.ok(ctx.layers.get("dsh-skins/tgcf"));
 });
 

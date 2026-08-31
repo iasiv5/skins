@@ -256,7 +256,7 @@ export function createTgcfSkin(jsxRuntime) {
 
   return {
     id: "tgcf",
-    label: { zh: "天官赐福 · 百无禁忌", en: "Heaven Official's Blessing" },
+    label: { zh: "天官赐福", en: "Heaven Official's Blessing" },
     description: {
       zh: "千灯引路 · 朱红鎏金 · 长夜同明",
       en: "A thousand lights · vermilion & gold",
@@ -274,7 +274,7 @@ export function createTgcfSkin(jsxRuntime) {
     scrimDark: `url("${WALLPAPER_LANTERNS}")`,
     placeholderLight: `url("${WALLPAPER_LANTERNS}")`,
     placeholderDark: `url("${WALLPAPER_LANTERNS}")`,
-    slogans: { zh: "千灯引路 · 长夜同明", en: "A thousand lights before the dawn" },
+    slogans: { zh: "百无禁忌", en: "No Taboos" },
     builtinAssets,
     project,
   };

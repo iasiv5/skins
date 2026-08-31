@@ -310,7 +310,7 @@ if (typeof updatePanelNode?.type !== "function") throw new Error("update panel m
 if (skinCards[0].props.children[0].props.children !== "DeepSeek Harness（官方）") throw new Error("official appearance must be the first skin card");
 if (skinCards[0].props["aria-checked"] !== false) throw new Error("official appearance must not be selected on first load");
 if (skinCards[1].props["aria-checked"] !== true) throw new Error("OpenBMC must remain selected on first load");
-if (skinCards[3].props.children[0].props.children !== "天官赐福 · 百无禁忌") throw new Error("tgcf must be registered and listed last");
+if (skinCards[3].props.children[0].props.children !== "天官赐福") throw new Error("tgcf must be registered and listed last");
 themeCards[2].props.onClick();
 if (themeSnapshot.preference !== "system") throw new Error("system button must call official theme.setTheme");
 if (storage.get("dsh-skins:theme-preference") !== "system") throw new Error("system selection must persist remotely");

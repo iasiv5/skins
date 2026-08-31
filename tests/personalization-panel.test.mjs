@@ -156,7 +156,7 @@ test("slogan text edits preview the complete locale object", async () => {
   enFresh.props.onChange({ target: { value: "New slogan" } });
   await tick();
   assert.equal(panel.configClient.calls.preview.length, 2);
-  assert.deepEqual(panel.configClient.calls.preview[0].value, { zh: "新标语", en: "A thousand lights before the dawn" });
+  assert.deepEqual(panel.configClient.calls.preview[0].value, { zh: "新标语", en: "No Taboos" });
   assert.deepEqual(panel.configClient.calls.preview[1].value, { zh: "新标语", en: "New slogan" });
 });
 

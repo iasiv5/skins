@@ -70,7 +70,7 @@ This section answers: which skins exist and what each feels like.
 ![OpenBMC, light](docs/assets/openbmc-light.webp)
 
 - `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots carry the UEFI Forum's official logo, a gilded circuit-board photo serves as the backdrop, and the final design lands later.
-- `tgcf` (Heaven Official's Blessing · No Taboos) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; every visual is original code-drawn SVG (lanterns & clouds / silver butterflies / gilded mountains / falling maples) and no official artwork is bundled. Vermilion-and-gold dark mode, pale-gold light mode, slogan "A thousand lights before the dawn".
+- `tgcf` (Heaven Official's Blessing · No Taboos) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; every visual is original code-drawn SVG (lanterns & clouds / silver butterflies / gilded mountains / falling maples) and no official artwork is bundled. Vermilion-and-gold dark mode, pale-gold light mode, slogan "No Taboos".
 
 ![TGCF, dark](docs/assets/tgcf-dark.webp)
 
