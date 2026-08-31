@@ -162,6 +162,10 @@ export function createTgcfSkin(jsxRuntime) {
         "--dsw-alias-button-primary-hover": PALETTE.gold,
         "--dsw-alias-bg-base": { light: panelBase(true, alpha), dark: panelBase(false, alpha) },
         "--dsw-specific-sidebar-fill": { light: panelBase(true, sidebarAlpha.light), dark: panelBase(false, sidebarAlpha.dark) },
+        // Floating layers (the switcher pop, menus) stay 较实 regardless of P,
+        // but tinted with the skin family - 素白 light / 墨黑 dark - instead of
+        // the host's neutral gray (ruling #16).
+        "--dsw-alias-bg-overlay": { light: panelBase(true, 0.82), dark: panelBase(false, 0.88) },
         "--dsw-specific-bubble": PALETTE.bubble,
       },
       cssVariables: {

@@ -107,6 +107,12 @@ const CSS = [
   '.dsh-skins-pz-gear{position:relative;flex:none;align-self:center;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
   '.dsh-skins-pz-gear:hover,.dsh-skins-pz-gear:focus-visible,.dsh-skins-pz-gear.touch{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsh-alias-interactive-bg-hover)}',
   '.dsh-skins-pz-gear svg{width:16px;height:16px}',
+  // Deep dark surfaces: openbmc/uefi/tgcf tint the bg-overlay token with
+  // their own families, but in the OFFICIAL skin no token override exists
+  // and the pop inherited the host's washed mid-gray (#61666b). Scope a
+  // deep charcoal to the no-skin state (ruling #16); skinned modes keep
+  // their token-driven overlay.
+  'body[data-ds-dark-theme]:not([data-dsh-openbmc-skin]):not([data-dsh-uefi-harness]):not([data-dsh-tgcf-skin]) .dsh-skins-pop{background:rgba(41,42,44,0.97)}',
   // -- combined shell (Q44/Q46): list column + docked panel column ----------
   '.dsh-skins-pop.dsh-skins-wide{flex-direction:row;align-items:stretch;width:min(1105px,calc(100vw - 24px))}',
   '.dsh-skins-pop-main{display:flex;flex-direction:column;gap:8px;min-width:0;width:360px;flex:none}',

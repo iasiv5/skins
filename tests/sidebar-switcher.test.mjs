@@ -341,6 +341,9 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
     "list column width is fixed in the BASE rule — the instant wide-class flip on collapse cannot resize it");
   assert.ok(css.includes(".dsh-skins-pop{transition:none}"),
     "reduced-motion skips the width animation");
+  assert.ok(
+    css.includes('body[data-ds-dark-theme]:not([data-dsh-openbmc-skin]):not([data-dsh-uefi-harness]):not([data-dsh-tgcf-skin]) .dsh-skins-pop{background:rgba(41,42,44,0.97)}'),
+    "official dark pop gets a deep charcoal, skinned modes keep their token overlay (ruling #16)");
 
   const tiny = makeHarness(260);
   await tiny.openShell();
