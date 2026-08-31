@@ -21,7 +21,9 @@ import {
 } from "../../shared/personalization/catalog.js";
 import { resolveHostErrorText } from "../update-panel.js";
 
-const PAGE_SIZE = 24;
+// Library grid folds after three full rows (3 × 6 per row, user ruling #18):
+// the first 18 assets render inline, the rest hide behind "还有 N 张未显示".
+const PAGE_SIZE = 18;
 
 export function createPersonalizationPanel({ jsx, react, configClient, tr, builtinAssetsFor, labelFor }) {
   const { useState, useEffect, useRef } = react;
@@ -215,12 +217,47 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
           ] }),
           jsx("input", {
             ref: uploadRef, type: "file", accept: "image/png,image/jpeg,image/webp,image/gif",
+            multiple: true,
             style: { display: "none" },
             onChange: async (event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              setMessage(tr("personalization.library.uploading"));
-              const result = await configClient.uploadImage(file);
+              const files = [...(event.target.files ?? [])];
+              event.target.value = ""; // re-selecting the same files must re-fire
+              if (files.length === 0) return;
+
+              // Q43 reversal (v2.6): the picker is the batch entry — multi-select
+              // uploads sequentially (the store serializes writes anyway) with
+              // progress and a failure summary. Drag-drop stays out.
+              if (files.length > 1) {
+                let ok = 0;
+                let lastAssetId = null;
+                let firstError = null;
+                for (let index = 0; index < files.length; index += 1) {
+                  setMessage(tr("personalization.library.uploadingBatch", {
+                    done: index + 1, total: files.length,
+                  }));
+                  const result = await configClient.uploadImage(files[index]);
+                  if (result.asset) {
+                    ok += 1;
+                    lastAssetId = result.asset.id;
+                  } else if (firstError === null) {
+                    firstError = resolveHostErrorText(
+                      { code: result.error, message: tr("personalization.library.uploadFailed") },
+                      tr,
+                    );
+                  }
+                }
+                if (lastAssetId !== null) onValue(lastAssetId); // land on the newest upload
+                setMessage(firstError === null
+                  ? null
+                  : ok === 0
+                    ? firstError
+                    : tr("personalization.library.uploadSomeFailed", {
+                        ok, failed: files.length - ok, reason: firstError,
+                      }));
+                return;
+              }
+
+              const result = await configClient.uploadImage(files[0]);
               if (result.asset) {
                 setMessage(null);
                 onValue(result.asset.id);
@@ -235,7 +272,6 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
                   tr,
                 ));
               }
-              event.target.value = "";
             },
           }),
         ] }),

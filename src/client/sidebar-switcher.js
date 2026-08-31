@@ -139,6 +139,12 @@ const CSS = [
   '.dsh-skins-pz-btn:disabled{opacity:.55;cursor:default}',
   '.dsh-skins-pz-group{display:flex;flex-direction:column;gap:6px}',
   '.dsh-skins-pz-thumbs{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}',
+  // Grid helpers must span the full row: squeezed into one ~110px column
+  // track, the "还有 N 张未显示" button and the empty-library hint wrapped
+  // into multi-line stubs (field report). Centered full-row reads as the
+  // load-more affordance; the hint stays left-aligned with its group label.
+  '.dsh-skins-pz-thumbs>.dsh-skins-pz-btn{grid-column:1/-1;justify-self:center;white-space:nowrap}',
+  '.dsh-skins-pz-thumbs>.dsh-skins-pz-muted{grid-column:1/-1;white-space:nowrap}',
   '.dsh-skins-pz-thumb{position:relative;aspect-ratio:4/3;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:var(--dsw-alias-bg-layer-2);cursor:pointer}',
   '.dsh-skins-pz-thumb img{width:100%;height:100%;object-fit:cover}',
   '.dsh-skins-pz-thumb.on{border-color:var(--dsw-alias-brand-primary)}',

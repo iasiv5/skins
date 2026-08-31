@@ -364,3 +364,82 @@ test("a rejected upload surfaces the server's reason — never the delete copy",
   assert.ok(textsOf(b.tree()).includes("personalization.library.uploadFailed"), "unmapped errors fall back to the upload copy");
   assert.equal(textsOf(b.tree()).includes("personalization.library.deleteFailed"), false, "delete copy still never renders");
 });
+
+test("batch upload (Q43 reversal): sequential, lands on the last success, summarizes failures", async () => {
+  const dictsSource = readFileSync("src/client/dicts.js", "utf8");
+  assert.ok(dictsSource.includes('"personalization.library.uploadingBatch"'), "uploadingBatch key exists");
+  assert.ok(dictsSource.includes('"personalization.library.uploadSomeFailed"'), "uploadSomeFailed key exists");
+
+  // Partial failure: 2 of 3 land; the picker order is preserved; selection
+  // lands on the LAST SUCCESSFUL upload; the summary names the count and the
+  // first rejection reason.
+  const config = makeConfigClient({ status: "synced" });
+  const seen = [];
+  config.uploadImage = async (file) => {
+    seen.push(file.name);
+    if (file.name === "bad.png") return { error: "UPLOAD_TOO_LARGE" };
+    return { asset: { id: `u_${file.name}` } };
+  };
+  const panel = mountPanel({
+    skinId: "tgcf", status: "synced", config,
+    translations: {
+      "host.personalization.tooLarge": "图片超过大小限制",
+      "personalization.library.uploadingBatch": "正在上传 {done}/{total}…",
+      "personalization.library.uploadSomeFailed": "已上传 {ok} 张，{failed} 张失败（{reason}）",
+    },
+  });
+  await tick();
+  const input = flatten(panel.tree()).find((n) => n.type === "input" && n.props.type === "file");
+  assert.equal(input.props.multiple, true, "the picker accepts multiple files");
+
+  await input.props.onChange({ target: { files: [{ name: "a.png" }, { name: "bad.png" }, { name: "c.png" }], value: "" } });
+  assert.deepEqual(seen, ["a.png", "bad.png", "c.png"], "files upload one by one in pick order");
+  const preview = config.calls.preview.at(-1);
+  assert.deepEqual(
+    [preview.skinId, preview.key, preview.value],
+    ["tgcf", "wallpaper", "u_c.png"],
+    "selection lands on the last successful upload, never the failed one",
+  );
+  const texts = textsOf(panel.tree());
+  assert.ok(texts.some((t) => t.includes("已上传 2 张，1 张失败")), "the partial-failure summary renders");
+  assert.ok(texts.some((t) => t.includes("图片超过大小限制")), "the rejection reason is surfaced");
+  assert.equal(texts.some((t) => t.includes("正在上传")), false, "the in-flight progress message never outlives the batch");
+
+  // All-fail: the bare reason stands alone and nothing is selected.
+  const failing = makeConfigClient({ status: "synced" });
+  failing.uploadImage = async () => ({ error: "ANIMATION_UNSUPPORTED" });
+  const allBad = mountPanel({
+    skinId: "tgcf", status: "synced", config: failing,
+    translations: { "host.personalization.animatedWebp": "动画 WebP 暂不支持" },
+  });
+  await tick();
+  const inputB = flatten(allBad.tree()).find((n) => n.type === "input" && n.props.type === "file");
+  await inputB.props.onChange({ target: { files: [{ name: "x.webp" }, { name: "y.webp" }], value: "" } });
+  assert.deepEqual(failing.calls.preview, [], "an all-fail batch selects nothing");
+  assert.ok(textsOf(allBad.tree()).includes("动画 WebP 暂不支持"), "all-fail shows the mapped reason");
+  assert.equal(textsOf(allBad.tree()).some((t) => t.includes("已上传")), false, "no success count when nothing landed");
+});
+
+test("library pagination folds after three rows: 18 inline, the rest behind load-more (ruling #18)", async () => {
+  const assets = Array.from({ length: 24 }, (_, i) => ({
+    id: `u_${String(i).padStart(32, "0")}`,
+    displayName: `img-${i + 1}.png`,
+  }));
+  const config = makeConfigClient({ status: "synced", library: assets });
+  const panel = mountPanel({ skinId: "tgcf", status: "synced", config });
+  await tick();
+  const cellsOf = (tree) => flatten(tree).filter(
+    (n) => n.type === "div" && typeof n.props.className === "string" && n.props.className.includes("dsh-skins-pz-cell"),
+  );
+  assert.equal(cellsOf(panel.tree()).length, 18, "exactly the first 18 assets render inline (3 × 6)");
+  assert.notEqual(
+    findButton(panel.tree(), "personalization.library.more count=6"),
+    null,
+    "the load-more button names the hidden remainder",
+  );
+
+  // Expanding reveals the rest; the button retires once nothing is hidden.
+  await findButton(panel.tree(), "personalization.library.more count=6").props.onClick();
+  assert.equal(cellsOf(panel.tree()).length, 24, "expanding reveals every remaining asset");
+  assert.equal(findButton(panel.tree(), "personalization.library.more count=6"), null, "the button retires when nothing is hidden");
+});

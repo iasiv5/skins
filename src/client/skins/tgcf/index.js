@@ -54,6 +54,12 @@ const CSS = [
   `${SCOPE} #root::after{content:"";position:fixed;right:11%;bottom:18%;width:40px;height:40px;z-index:-1;`
   + `background:url("${BUTTERFLY_SPRITE}") center/contain no-repeat;opacity:.16;animation:dsh-tgcf-drift-b 41s ease-in-out infinite;pointer-events:none}`,
   `@media (prefers-reduced-motion:reduce){${SCOPE}::before,${SCOPE} #root::before,${SCOPE} #root::after{animation:none}}`,
+  // Solid inverted motto "NO TABOOS" (TgcfName badge, official HARNESS
+  // 反色 language): ink box + snow text on the 素白 glass, flipped to snow
+  // box + ink text on the 墨黑 glass. #181010/#FFFCF6 are the skin's own
+  // 墨黑/素白 (same values panelBase tints the glass with).
+  `${SCOPE} .dsh-tgcf-badge{display:inline-flex;align-items:center;background:#181010;border-radius:4px;padding:0 5px;font-size:10px;line-height:16px;font-weight:600;letter-spacing:.08em;color:#FFFCF6}`,
+  `body[data-dsh-tgcf-skin][data-ds-dark-theme] .dsh-tgcf-badge{background:#FFFCF6;color:#181010}`,
 ].join("\n");
 
 /** Default panel glass colours (素白 / 墨黑) derived from the palette. */
@@ -98,16 +104,33 @@ export function createTgcfSkin(jsxRuntime) {
   }
 
   function TgcfName() {
+    // Harness badge language (official/openbmc HARNESS 反色块): the brand
+    // text keeps its gradient, then a solid inverted badge "NO TABOOS"
+    // rides after it — 4px radius, 10px caps, .08em tracking like the
+    // reference badge. Black/white inversion is theme-aware via the
+    // .dsh-tgcf-badge rules in the static CSS below
+    // (亮色墨底素白字 / 暗色素白底墨字).
     return jsx("span", {
       style: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
         fontWeight: 700,
         letterSpacing: "0.02em",
-        background: "linear-gradient(120deg,#C9A227,#E8C56A 45%,#C3272B)",
-        WebkitBackgroundClip: "text",
-        backgroundClip: "text",
-        color: "transparent",
+        whiteSpace: "nowrap",
       },
-      children: "天官赐福",
+      children: [
+        jsx("span", {
+          style: {
+            background: "linear-gradient(120deg,#C9A227,#E8C56A 45%,#C3272B)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+          },
+          children: "天官赐福",
+        }),
+        jsx("span", { className: "dsh-tgcf-badge", children: "NO TABOOS" }),
+      ],
     });
   }
 

@@ -150,7 +150,7 @@ function makeHarness(viewportHeight = 900) {
   );
   const switcherButton = () => flatten(tree).find((n) => n.type === "button" && String(n.props.className).includes("dsh-skins-switcher-btn"));
   const panelColumn = () => inShell().find((n) => n.props?.className === "dsh-skins-pz-panel") ?? null;
-  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "通透度");
+  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "通透度 | Transparency");
   const heading = () => inShell().find((n) => n.props?.role === "heading");
 
   render();
@@ -323,6 +323,10 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
     "wide shell sized for a 6-per-row wallpaper grid (v2.4.1 #3)");
   assert.ok(css.includes(".dsh-skins-pz-thumbs{display:grid;grid-template-columns:repeat(6,1fr)"),
     "wallpaper grid shows 6 thumbnails per row");
+  assert.ok(css.includes(".dsh-skins-pz-thumbs>.dsh-skins-pz-btn{grid-column:1/-1;justify-self:center;white-space:nowrap"),
+    "the load-more button spans the full row centered — never wrapped inside one column track");
+  assert.ok(css.includes(".dsh-skins-pz-thumbs>.dsh-skins-pz-muted{grid-column:1/-1;white-space:nowrap"),
+    "the empty-library hint spans the full row — never wrapped inside one column track");
   assert.ok(css.includes(".dsh-skins-pz-thumbs{grid-template-columns:repeat(4,1fr)"),
     "stacked (<904px) mode falls back to 4 columns");
   assert.ok(css.includes(".dsh-skins-pz-fields-locale{flex-direction:row"),
