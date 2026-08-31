@@ -96,10 +96,10 @@ test("the translucency sweep spans its endpoints (ruling #15 amendment)", () => 
   const floor = projectSkin(fixtureSkin(), { panelOpacity: 0 }, { assetResolver: resolver });
   assert.equal(floor.effects.backdrop.blur, 0);
   assert.equal(floor.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)");
-  // P=10 (factory default) → derived layers ~zero; the wallpaper reads raw.
+  // P=30 (factory default since ruling #17) → scrim 3, blur 1.
   const current = projectSkin(fixtureSkin(), {}, { assetResolver: resolver });
-  assert.equal(current.effects.backdrop.blur, 0);
-  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)");
+  assert.equal(current.effects.backdrop.blur, 1);
+  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.030)");
 });
 
 test("layer-1 field fallback keeps projection healthy with bad overrides", () => {
@@ -108,8 +108,8 @@ test("layer-1 field fallback keeps projection healthy with bad overrides", () =>
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
   assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
-  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)"); // catalog default 10
-  assert.equal(result.effects.backdrop.blur, 0); // catalog default
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.030)"); // catalog default 30
+  assert.equal(result.effects.backdrop.blur, 1); // catalog default
 });
 
 test("a crashing projector triggers the defaults-only retry (layer 2)", () => {
@@ -261,17 +261,16 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   const resolverFor = (ref) => ({ url: `builtin://${ref.skinId}/${ref.assetKey}`, mime: "image/svg+xml" });
   const result = projectSkin(skin, {}, { assetResolver: resolverFor });
   assert.equal(result.degraded, "none");
-  // Translucency curve at the factory default P=10 → scrim 0, blur 0 (ruling #15
-  // amendment): the default state IS the near-raw wallpaper; one alpha drives
-  // BOTH overlays.
-  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.000),rgba(255,246,234,0.000))");
-  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.000),rgba(14,7,8,0.000))");
-  assert.equal(result.effects.backdrop.blur, 0);
-  assert.deepEqual(result.effects.cssVariables["--dsh-tgcf-glass-blur"], { light: "0px", dark: "0px" });
+  // Translucency curve at the factory default P=30 → scrim 3, blur 1 (ruling #17);
+  // one alpha drives BOTH overlays.
+  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.030),rgba(255,246,234,0.030))");
+  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.030),rgba(14,7,8,0.030))");
+  assert.equal(result.effects.backdrop.blur, 1);
+  assert.deepEqual(result.effects.cssVariables["--dsh-tgcf-glass-blur"], { light: "1px", dark: "1px" });
   // Sidebar fill sits ABOVE the content base by the reference-skin deltas
   // (ruling #15: light +0.05, dark +0.17 — openbmc/uefi pattern).
-  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-base"], { light: "rgba(255,252,246,0.1)", dark: "rgba(24,16,16,0.1)" });
-  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-sidebar-fill"], { light: "rgba(255,252,246,0.15)", dark: "rgba(24,16,16,0.27)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-base"], { light: "rgba(255,252,246,0.3)", dark: "rgba(24,16,16,0.3)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-sidebar-fill"], { light: "rgba(255,252,246,0.35)", dark: "rgba(24,16,16,0.47)" });
   assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/crimson")');
   // Favicon is a static skin asset since the field was removed.
   assert.equal(result.effects.favicon.href, skin.favicon);

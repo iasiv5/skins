@@ -208,7 +208,7 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 |---|---|---|---|---|---|
 | wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签二选（v2.4.1 #6：AI 画作取代四个代码纹样） | `builtin:tgcf:crimson` | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
-| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **10（裁决 #15 起）** | f.panelTranslucency | tokenOverrides(bg-base + sidebar-fill 按参考皮肤增量分层，rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14/#15） |
+| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **30（裁决 #17 起）** | f.panelTranslucency | tokenOverrides(bg-base + sidebar-fill 按参考皮肤增量分层，rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14/#15） |
 
 **v2.4 精简注记（Q35）**：favicon/accent/gold/bubbleColor 四字段删除。皮肤视觉身份不随之丢失——tgcf `project()` 将原 catalog 默认值（brand-primary #C3272B/#E0564A、鎏金 #C9A227/#D4AF37、气泡 #C3272B/#8E2A2F、灯笼 favicon）静态烘焙为皮肤常量；SkinEffects 契约（§3/§3a）不变。
 
@@ -338,6 +338,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.5 修订（用户裁决 #15：默认通透度降至 10%，侧栏与正文分层）**：产品主实测后两项再校准——①出厂默认 70 → **10**：默认状态即“壁纸清晰可读”，想要更实的前提自己拖；曲线本身不动（P=82 校准点保留，历史观感仍可复现）。②**侧栏与正文区分离**：照搬 openbmc/uefi 两块参考皮肤的既有模式——`--dsh-specific-sidebar-fill` 在 `--dsw-alias-bg-base` 之上加**固定增量**（亮色 +0.05、暗色 +0.17，两参考皮肤完全一致），而非按比例缩放（比例法在低通透度端增量趋零，分层失效）。P=10 时：正文底色 α=0.10，侧栏 α=亮 0.15 / 暗 0.27——菜单文字有足够衬底，正文区与壁纸保持通透；P=100 时增量被 1.0 封顶。侧栏 α 四舍五入到百分位（0.1+0.05 不得印成 0.15000000000000002）。
 
 **v2.5 修订（裁决 #15 补充：侧栏 token 前缀笔误 + 通透度端点契约）**：产品主重启宿主后实测三项——①滑杆调不动菜单区；②默认 10% 下菜单区完全不透；③滑杆到 50% 壁纸已不可读。归因：②③各有一半是 #15 实现笔误——侧栏 token 被误写为 **`--dsh-specific-sidebar-fill`**，而宿主消费的是 **`--dsw-specific-sidebar-fill`**（openbmc/uefi 同名），死键导致侧栏恒为宿主实色 #f9fafb、滑杆自然无效；已改回 dsw 前缀（该键自 e97ad02 起即为 dsw，8270417 引入笔误）。③为真实设计缺陷：线性曲线在 50% 处（α0.5+模糊7px+纱15%）壁纸已不可读，滑杆上半段形同虚设。修正端点契约为**滑杆全程映射完整视觉范围**：P=0 纯壁纸完全透出、P=100 完全遮蔽（α1.0+纱30+模糊12）；纱与模糊改**二次曲线**（30·(P/100)²、12·(P/100)²，玻璃雾化同模糊曲线），中段保持可读（P=50 → 纱8%/模糊3px），底色 α 保持线性即用户所见的百分比。出厂默认仍为 10%（纱0/模糊0/底色0.10/侧栏亮0.15暗0.27）。
+
+**v2.5 修订（用户裁决 #17：控件名「通透度」+ 出厂默认 30%）**：产品主两点微调——①界面文案「面板通透度」精简为**「通透度」**（英文名 Panel translucency 不变，字段键/存储键仍为 panelOpacity）；②出厂默认 10% → **30%**（曲线不动：纱3%/模糊1px/底色0.30/侧栏亮0.35暗0.47）——10% 过透导致浅色壁纸上菜单与正文缺少存在感，30% 在「壁纸为主」与「界面可辨」间更平衡。
 
 **v2.5 修订（用户裁决 #16：深色弹层底色与皮肤色系统一）**：产品主反馈深色下官方与 tgcf 的换肤弹层底色「灰灰的」。实测：弹层底色消费 `--dsw-alias-bg-overlay`，openbmc/uefi 均以自身色系覆盖（深冰蓝 rgba(10,22,32,.88) / 深紫 rgba(27,21,54,.88)），而 tgcf 未覆盖、官方无皮肤可覆盖，双双落到宿主中灰默认 `#61666b`——比官方深色主底 `#151517` 亮一大截，观感发闷。修复：①tgcf `tokenOverrides` 增补 `bg-overlay` 常量对（亮=素白 rgba(255,252,246,.82)、暗=墨黑 rgba(24,16,16,.88)，即 panelBase 族、与 openbmc「浮层较实」结构一致）；②官方深色下由换肤器自身 CSS 提供深炭色弹层 `rgba(41,42,44,.97)`——作用域 `body[data-ds-dark-theme]:not([各皮肤 attr])`，只在无皮肤挂载时生效，皮肤态的 token 驱动不受影响（注意 uefi 的 body 属性是 `data-dsh-uefi-harness`，无 `-skin` 后缀）。
 

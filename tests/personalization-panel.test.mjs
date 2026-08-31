@@ -71,13 +71,21 @@ function installDom() {
   return confirms;
 }
 
-function mountPanel({ skinId, status, config } = {}) {
+function mountPanel({ skinId, status, config, translations } = {}) {
   const react = createFakeReact();
   const confirms = installDom();
   const configClient = config ?? makeConfigClient({ status });
   // Mirrors the real locale runtime: template lookup + {placeholder}
   // substitution. Tests assert on the substituted params, so append them.
+  // `translations` overrides specific keys with real copy so code→key→text
+  // resolution (resolveHostErrorText) can be observed end to end.
   const tr = (key, params = {}) => {
+    if (translations && typeof translations[key] === "string") {
+      return Object.entries(params).reduce(
+        (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+        translations[key],
+      );
+    }
     const suffix = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(" ");
     return suffix === "" ? key : `${key} ${suffix}`;
   };
@@ -327,4 +335,32 @@ test("no theme UI and no theme keys remain anywhere (⑦)", () => {
   }
   assert.ok(dictsSource.includes('"personalization.library.uploading"'), "uploading key exists");
   assert.ok(dictsSource.includes('"personalization.panelLabel"'), "panelLabel key exists");
+});
+
+test("a rejected upload surfaces the server's reason — never the delete copy", async () => {
+  // Field report: a failed upload rendered 删除失败 (deleteFailed), sending
+  // the bug hunt the wrong way. The upload path must map the server's code
+  // through HOST_ERROR_KEYS and fall back to its own generic copy.
+  const tooLarge = makeConfigClient({ status: "synced" });
+  tooLarge.uploadImage = async () => ({ error: "UPLOAD_TOO_LARGE" });
+  const a = mountPanel({
+    skinId: "tgcf", status: "synced", config: tooLarge,
+    translations: { "host.personalization.tooLarge": "图片超过大小限制" },
+  });
+  await tick();
+  const input = flatten(a.tree()).find((n) => n.type === "input" && n.props.type === "file");
+  assert.notEqual(input, null, "hidden file input renders");
+  await input.props.onChange({ target: { files: [{ name: "big.png" }], value: "" } });
+  const textsA = textsOf(a.tree());
+  assert.ok(textsA.includes("图片超过大小限制"), "mapped code renders its localized reason");
+  assert.equal(textsA.includes("personalization.library.deleteFailed"), false, "delete copy never renders for an upload");
+
+  // Unmapped code (gate string / HTTP status): the generic upload copy.
+  const generic = makeConfigClient({ status: "synced" }); // default stub errors "offline"
+  const b = mountPanel({ skinId: "tgcf", status: "synced", config: generic });
+  await tick();
+  const inputB = flatten(b.tree()).find((n) => n.type === "input" && n.props.type === "file");
+  await inputB.props.onChange({ target: { files: [{ name: "x.png" }], value: "" } });
+  assert.ok(textsOf(b.tree()).includes("personalization.library.uploadFailed"), "unmapped errors fall back to the upload copy");
+  assert.equal(textsOf(b.tree()).includes("personalization.library.deleteFailed"), false, "delete copy still never renders");
 });

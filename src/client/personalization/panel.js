@@ -19,6 +19,7 @@ import {
   getSkinSchema,
   mergeValues,
 } from "../../shared/personalization/catalog.js";
+import { resolveHostErrorText } from "../update-panel.js";
 
 const PAGE_SIZE = 24;
 
@@ -224,7 +225,15 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
                 setMessage(null);
                 onValue(result.asset.id);
               } else {
-                setMessage(tr("personalization.library.deleteFailed"));
+                // Surface WHY the upload was rejected (server code → localized
+                // reason; unmapped codes fall back to the generic copy). The
+                // delete-failed text must never render for an upload — field
+                // report: a failed upload showed 删除失败 and misdirected the
+                // bug hunt.
+                setMessage(resolveHostErrorText(
+                  { code: result.error, message: tr("personalization.library.uploadFailed") },
+                  tr,
+                ));
               }
               event.target.value = "";
             },

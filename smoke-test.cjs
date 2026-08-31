@@ -410,8 +410,8 @@ if (body.dataset.dshTgcfSkin !== "") throw new Error("tgcf body scope attr missi
 const tgcfBackdrop = styleTag("tgcf.backdrop");
 if (!tgcfBackdrop || tgcfBackdrop.removed) throw new Error("tgcf backdrop stylesheet missing");
 if (!tgcfBackdrop.textContent.includes("data:image/webp")) throw new Error("tgcf backdrop must embed the bundled factory wallpaper (WebP)");
-if (tgcfBackdrop.textContent.includes("filter:blur(")) throw new Error("tgcf backdrop must be blur-free at the default P=10 (ruling #15 amendment)");
-if (!tgcfBackdrop.textContent.includes("linear-gradient(rgba(255,246,234,0.000)")) throw new Error("tgcf scrim overlay must be zero at the default P=10 (ruling #15 amendment)");
+if (!tgcfBackdrop.textContent.includes("filter:blur(1px)")) throw new Error("tgcf backdrop must apply the curve-derived 1px wallpaper blur at the default P=30 (ruling #17)");
+if (!tgcfBackdrop.textContent.includes("linear-gradient(rgba(255,246,234,0.030)")) throw new Error("tgcf scrim overlay must derive from the translucency curve at the default P=30 (ruling #17)");
 const tgcfThemeLayer = ctx.theme._layers.get("dsh-skins/tgcf");
 if (!tgcfThemeLayer) throw new Error("tgcf must register a token override layer");
 if (tgcfThemeLayer["--dsw-alias-brand-primary"].light !== "#C3272B") throw new Error("accent default must map to the brand-primary token");

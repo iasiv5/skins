@@ -150,7 +150,7 @@ function makeHarness(viewportHeight = 900) {
   );
   const switcherButton = () => flatten(tree).find((n) => n.type === "button" && String(n.props.className).includes("dsh-skins-switcher-btn"));
   const panelColumn = () => inShell().find((n) => n.props?.className === "dsh-skins-pz-panel") ?? null;
-  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "面板通透度");
+  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "通透度");
   const heading = () => inShell().find((n) => n.props?.role === "heading");
 
   render();

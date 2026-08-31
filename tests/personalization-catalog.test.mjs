@@ -139,7 +139,7 @@ test("mergeValues: layer-1 fallback swaps invalid overrides for defaults and rep
     blur: 5, // retired field: silently ignored, NOT an issue (ruling #14)
     unknownFutureKey: { any: "shape" },
   });
-  assert.equal(values.panelOpacity, 10);
+  assert.equal(values.panelOpacity, 30);
   assert.deepEqual(issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
   // Unknown keys are ignored by projection (the store normalizes them away at load).
   assert.equal("unknownFutureKey" in values, false);
@@ -166,7 +166,7 @@ test("accessors expose schema, fields, asset fields and defaults", () => {
   assert.equal(schema.fields.length, 3);
   assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "panelOpacity"]);
   assert.equal(getField("tgcf", "blur"), null, "blur field retired by ruling #14");
-  assert.equal(getField("tgcf", "panelOpacity").default, 10);
+  assert.equal(getField("tgcf", "panelOpacity").default, 30);
   assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper"]);
   assert.deepEqual(listAssetFields("openbmc").map((field) => field.key), ["wallpaper"]);
   assert.equal(defaultsFor("tgcf").titleBrand, undefined);
