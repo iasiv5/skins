@@ -76,14 +76,14 @@ This section answers: which skins exist and what each feels like.
 
 ## Personalization
 
-This section answers: what each skin exposes, where settings live, and how to share them.
+This section answers: what each skin exposes, where settings live, and when edits take effect.
 
-Every skin card carries a gear button (with a dot when overrides exist) that opens that skin's personalization panel:
+Every skin card carries a gear button (with a dot when overrides exist) that docks that skin's personalization panel beside the switcher (stacked vertically on narrow windows):
 
-- **Customizable fields** (fully open on `tgcf`; wallpaper-only on `openbmc` / `uefi-harness`): wallpaper (built-in motifs + a personal library), site icon, slogan (zh/en), tab title, accent / gold / bubble colors (one value per light/dark), panel opacity, background blur, scrim strength (light/dark).
-- **Personal library**: drop or upload PNG / JPEG / WebP / GIF (≤ 20MB each, GIF ≤ 12MP; animated WebP and SVG are rejected), shared by all skins; deleting a referenced image first lists the affected skins.
-- **Theme packages**: export the current configuration as a `.zip` (images included) and import it on another DSH to replicate; import shows a field-level preview first, and imported images are always re-identified and deduplicated by content.
-- **Storage & upgrades**: configuration and the library live under `$DSH_HOME/dsh-skins/` (isolated from the plugin install directory), so upgrades / rollbacks / one-click updates preserve them by construction; only overrides are stored, and new defaults flow to untouched fields.
+- **Customizable fields** (fully open on `tgcf`; wallpaper-only on `openbmc` / `uefi-harness`): wallpaper (built-in motifs + a personal library), slogan (zh/en), tab title, panel opacity, background blur, scrim strength (one value for both themes). Colours and the site icon are fixed skin design and no longer adjustable.
+- **Personal library**: upload PNG / JPEG / WebP / GIF (≤ 20MB each, GIF ≤ 12MP; animated WebP and SVG are rejected), shared by all skins; deleting a referenced image or clearing the library lists every affected skin and field first.
+- **Explicit save**: edits preview live in the UI; pressing Save is what persists them and syncs across tabs; Revert discards every unsaved change in one click (works offline too); leaving with unsaved edits (blank click / switcher button / Escape / collapsing the panel / switching the edit target) always asks first.
+- **Storage & upgrades**: configuration and the library live under `$DSH_HOME/dsh-skins/` (isolated from the plugin install directory), so upgrades / rollbacks / one-click updates preserve them by construction; only overrides are stored, and new defaults flow to untouched fields; leftovers of retired fields are cleaned up at load.
 - **Safety design**: uploads pass magic-number validation and size caps; a damaged state file triggers recovery mode (rebuilds the library, never deletes images); concurrent field-level writes never clobber each other (last write wins per field).
 
 ## The skin switcher
@@ -230,9 +230,6 @@ In the browser on the DSH host machine (loopback), the preference is persisted b
 
 **Do personalization settings survive upgrades?**
 Yes. Configuration and the library live in the `$DSH_HOME/dsh-skins/` data directory; self-updates only replace the plugin install directory and physically cannot touch it — rollbacks preserve it too. Only disk-level damage can lose configuration, and even then recovery mode keeps the library images.
-
-**What is the theme-package format?**
-A store-only ZIP produced and consumed exclusively by this plugin (uncompressed, strictly validated); to share a look with a colleague, export and import.
 
 ## Known limits
 
