@@ -159,7 +159,7 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
               disabled, title: tr(asset?.labelKey ?? "personalization.builtin.default"),
               "aria-pressed": value === ref,
               onClick: () => onValue(ref),
-              children: jsx("img", { src: liveAssets[key]?.url ?? asset?.url ?? "", alt: tr(asset?.labelKey ?? key), loading: "lazy" }),
+              children: jsx("img", { src: liveAssets[key]?.url ?? asset?.url ?? "", alt: tr(asset?.labelKey ?? key), loading: "lazy", decoding: "async" }),
             }, key);
           }) }),
         ] }) : null,
@@ -174,7 +174,7 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
                   disabled, title: asset.displayName,
                   "aria-pressed": value === asset.id,
                   onClick: () => onValue(asset.id),
-                  children: jsx("img", { src: configClient.assetUrl(asset), alt: asset.displayName, loading: "lazy" }),
+                  children: jsx("img", { src: configClient.assetUrl(asset), alt: asset.displayName, loading: "lazy", decoding: "async" }),
                 }, asset.id),
                 jsx("button", {
                   type: "button",

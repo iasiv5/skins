@@ -59,6 +59,11 @@ export function createFakeReact() {
     }
   }
 
+  // Same drain semantics as useEffect here — paint-phase ordering is
+  // unobservable in this DOM-less harness; the switcher's height sweep only
+  // needs the "runs after commit, skipped when deps are unchanged" contract.
+  const useLayoutEffect = useEffect;
+
   function useRef(initial) {
     const s = slot();
     if (!("ref" in s)) s.ref = { current: initial };
@@ -109,7 +114,7 @@ export function createFakeReact() {
   }
 
   return {
-    useState, useEffect, useRef, useCallback, instantiate,
+    useState, useEffect, useLayoutEffect, useRef, useCallback, instantiate,
     render(thunk) {
       rootThunk = thunk;
       const tree = thunk();

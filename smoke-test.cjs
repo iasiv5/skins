@@ -70,6 +70,7 @@ global.window = {
 						return [value, () => {}];
 					},
 					useEffect: () => {},
+					useLayoutEffect: () => {},
 					useCallback: (fn) => fn,
 					useRef: (v) => ({ current: v })
 				};

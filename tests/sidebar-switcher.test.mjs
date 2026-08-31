@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { installSidebarSwitcher } from "../src/client/sidebar-switcher.js";
+import { installSidebarSwitcher, sweepShellHeight } from "../src/client/sidebar-switcher.js";
 import { createFakeReact, jsx, flatten } from "./fake-react.mjs";
 
 function makeDom(viewportHeight = 900) {
@@ -345,4 +345,54 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
   const tiny = makeHarness(260);
   await tiny.openShell();
   assert.equal(tiny.shell().props.style.maxHeight, 220, "very short viewports keep a usable floor, never a negative/zero clamp");
+});
+
+test("⑪ gear toggle sweeps the shell height on the width's beat (issue #13)", () => {
+  // Expand: the box jumped 493→628 in one frame pre-fix; the sweep pins the
+  // old height and transitions to the post-commit clamp ceiling instead.
+  const style = {};
+  let onTransitionEnd = null;
+  const shell = {
+    style,
+    scrollHeight: 900, // unclamped panel content extent
+    offsetHeight: 493, // consumed by the forced reflow between pin and target
+    getBoundingClientRect: () => ({ height: 628 }), // post-commit clamped box
+    addEventListener: (kind, fn) => { if (kind === "transitionend") onTransitionEnd = fn; },
+    removeEventListener: () => {},
+  };
+  const finish = sweepShellHeight(shell, { from: 493, maxHeight: 628 });
+  assert.equal(style.height, "628px", "sweeps toward the clamped target, not the raw content height");
+  assert.equal(style.overflowY, "hidden", "no transient scrollbar while the box is pinned below its content");
+  assert.ok(style.transition.includes("height 200ms ease-out"), "height rides the same beat as the width");
+  assert.ok(style.transition.includes("width 200ms ease-out"),
+    "inline transition restates width — an inline transition replaces the stylesheet's width-only rule");
+  onTransitionEnd({ propertyName: "height" });
+  assert.equal(style.height, "", "pin released after the sweep — auto height resolves to the target");
+  assert.equal(style.transition, "");
+  finish(); // idempotent double-release
+
+  // Collapse: 628 → 493 sweeps down the same way.
+  const down = { style: {}, scrollHeight: 493, getBoundingClientRect: () => ({ height: 493 }), offsetHeight: 628 };
+  sweepShellHeight(down, { from: 628, maxHeight: 628 });
+  assert.equal(down.style.height, "493px", "collapse sweeps down to the list-column height");
+});
+
+test("⑫ height sweep no-ops where a sweep would be wrong (issue #13)", () => {
+  const style = {};
+  const shell = { style, scrollHeight: 0, getBoundingClientRect: () => ({ height: 0 }) };
+  assert.equal(typeof sweepShellHeight(undefined, { from: 100, maxHeight: 600 }), "function", "always returns a cleanup");
+  assert.deepEqual(style, {}, "no shell → nothing pinned");
+  assert.equal(typeof sweepShellHeight(shell, { from: null, maxHeight: 600 }), "function");
+  assert.deepEqual(style, {}, "first shell open (no pre-toggle height) → nothing pinned");
+  sweepShellHeight(shell, { from: 0, maxHeight: 600 });
+  assert.deepEqual(style, {}, "target equals current → nothing to animate, nothing pinned");
+  const savedMatchMedia = globalThis.window.matchMedia;
+  globalThis.window.matchMedia = () => ({ matches: true });
+  try {
+    sweepShellHeight({ ...shell, scrollHeight: 900, getBoundingClientRect: () => ({ height: 628 }) }, { from: 493, maxHeight: 628 });
+    assert.deepEqual(style, {}, "reduced motion → instant layout, never a sweep");
+  } finally {
+    if (savedMatchMedia === undefined) delete globalThis.window.matchMedia;
+    else globalThis.window.matchMedia = savedMatchMedia;
+  }
 });

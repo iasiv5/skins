@@ -4,6 +4,58 @@ import { createPersonalizationPanel } from "./personalization/panel.js";
 import { getSkinSchema } from "../shared/personalization/catalog.js";
 
 const TAG_ID = "dsh-skins/sidebar.css";
+
+/** The shell width/height animation beat (keep in sync with the CSS below). */
+const SWEEP_MS = 200;
+
+/**
+ * Height sweep across gear expand/collapse/retarget (field issue #13). The
+ * shell's height is content-driven (auto → auto), so `transition: height`
+ * alone never interpolates and every toggle snapped the box to its new
+ * height in a single frame — on expansion the whole list column jumped up
+ * while the width was still animating (the visible "bounce"; collapse only
+ * masked it because there the snap rode the width motion in the same beat).
+ * Pin the pre-toggle height, then release it into a height transition toward
+ * the post-toggle height so the box grows on the SAME beat as its width.
+ * Returns a cleanup that releases the pin (safe to call twice).
+ */
+export function sweepShellHeight(shell, { from, maxHeight, duration = SWEEP_MS } = {}) {
+  if (!shell || typeof from !== "number" || !Number.isFinite(from)) return () => {};
+  if (typeof shell.getBoundingClientRect !== "function") return () => {};
+  const reduced = typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) return () => {};
+  // Post-commit box: the clamped layout height and the unclamped content
+  // extent — the sweep's target is the clamp ceiling, not the content.
+  const rect = shell.getBoundingClientRect();
+  const content = Math.max(rect.height, shell.scrollHeight || 0);
+  const target = typeof maxHeight === "number" ? Math.min(content, maxHeight) : content;
+  if (!Number.isFinite(target) || Math.abs(target - from) < 1) return () => {};
+  const release = () => {
+    shell.style.height = "";
+    shell.style.transition = "";
+    shell.style.overflowY = "";
+  };
+  // The inline transition REPLACES the stylesheet's width-only transition —
+  // it must restate width, or the box would snap horizontally mid-sweep.
+  shell.style.transition = `width ${duration}ms ease-out, height ${duration}ms ease-out`;
+  shell.style.height = `${from}px`;
+  shell.style.overflowY = "hidden"; // no transient scrollbar while clamped
+  void shell.offsetHeight; // commit the pin as the transition's from-value
+  shell.style.height = `${target}px`;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    shell.removeEventListener?.("transitionend", onEnd);
+    release();
+  };
+  const onEnd = (event) => { if (event?.propertyName === "height") finish(); };
+  const timer = setTimeout(finish, duration + 60); // transitionend can be eaten
+  shell.addEventListener?.("transitionend", onEnd);
+  return finish;
+}
 const THEME_CHOICES = [
   { id: "light", labelKey: "appearance.light" },
   { id: "dark", labelKey: "appearance.dark" },
@@ -198,6 +250,16 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     const [personalizeId, setPersonalizeId] = react.useState(null);
     const [themePreference, setThemePreference] = react.useState(() => ctx.theme?.getTheme?.().preference ?? "system");
     const buttonRef = react.useRef(null);
+    const shellRef = react.useRef(null);
+    const shellHeightRef = react.useRef(null);
+
+    // Capture the shell's current height during render — i.e. BEFORE React
+    // mutates the DOM for this render — so the height sweep (layout effect
+    // below) knows the box's pre-toggle height. Reading layout here is fine:
+    // this component re-renders only on discrete user/state events.
+    if (open && shellRef.current && typeof shellRef.current.getBoundingClientRect === "function") {
+      shellHeightRef.current = shellRef.current.getBoundingClientRect().height;
+    }
 
     // Closing the shell clears the panel state. Auto-save lives in the
     // session-global config client (ADR-0003), so an in-flight debounce
@@ -337,8 +399,19 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     const shellMaxHeight = box === null || typeof window === "undefined" || typeof window.innerHeight !== "number"
       ? undefined
       : Math.max(220, window.innerHeight - box.bottom - 12);
+    // Post-commit, pre-paint: pin the pre-toggle height and sweep to the new
+    // one on the width's beat (field issue #13 — see sweepShellHeight).
+    react.useLayoutEffect(() => {
+      if (!open || box === null) return undefined;
+      const shell = shellRef.current;
+      if (!shell) return undefined;
+      const from = shellHeightRef.current;
+      shellHeightRef.current = null;
+      return sweepShellHeight(shell, { from, maxHeight: shellMaxHeight }) ?? undefined;
+    }, [open, showPersonalization, personalizeId, shellMaxHeight]);
     const panel = open && box && typeof document !== "undefined"
       ? reactDom.createPortal(jsx("div", {
+        ref: shellRef,
         className: `dsh-skins-pop${showPersonalization ? " dsh-skins-wide" : ""}`,
         role: "dialog",
         "aria-label": showPersonalization ? localeTranslate("personalization.title") : tr("skins.switch"),
