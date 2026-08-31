@@ -102,16 +102,62 @@ export const SKINS = {
     ],
   },
 
-  // Legacy skins keep behaviour byte-equivalent to 0.6.0 (design §9): the
-  // numeric `scrim` concept does not exist for them (their scrim is a baked
-  // gradient string inside the art layer), so they expose `wallpaper` only.
+  // ADR-0004 (reversing design §9a): every catalog skin declares the same
+  // standard field set. The legacy skins' catalog slogan defaults are
+  // same-source with their factories' static `slogans`, and panelOpacity
+  // default 55 anchors the derived projection to the baked alpha strings —
+  // the byte-equivalence invariant is pinned by the projector tests.
+  // Legacy wallpaper semantics (scrim never applies to user images,
+  // placeholder branch) live inside each skin's project() branches.
   openbmc: {
     builtinAssets: { art: { mime: "image/webp", labelKey: "personalization.builtin.default" } },
-    fields: [{ ...WALLPAPER_FIELD, default: "builtin:openbmc:art", builtinChoices: ["art"] }],
+    fields: [
+      { ...WALLPAPER_FIELD, default: "builtin:openbmc:art", builtinChoices: ["art"] },
+      {
+        key: "slogan",
+        type: "text",
+        scope: "locale",
+        labelKey: "personalization.slogan",
+        maxLength: 40,
+        default: { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" },
+      },
+      {
+        key: "panelOpacity",
+        type: "range",
+        scope: "single",
+        labelKey: "personalization.panelTranslucency",
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: "%",
+        default: 55,
+      },
+    ],
   },
   "uefi-harness": {
     builtinAssets: { art: { mime: "image/webp", labelKey: "personalization.builtin.default" } },
-    fields: [{ ...WALLPAPER_FIELD, default: "builtin:uefi-harness:art", builtinChoices: ["art"] }],
+    fields: [
+      { ...WALLPAPER_FIELD, default: "builtin:uefi-harness:art", builtinChoices: ["art"] },
+      {
+        key: "slogan",
+        type: "text",
+        scope: "locale",
+        labelKey: "personalization.slogan",
+        maxLength: 40,
+        default: { zh: "启于固件 · 行于万象", en: "Boot before everything" },
+      },
+      {
+        key: "panelOpacity",
+        type: "range",
+        scope: "single",
+        labelKey: "personalization.panelTranslucency",
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: "%",
+        default: 55,
+      },
+    ],
   },
 };
 

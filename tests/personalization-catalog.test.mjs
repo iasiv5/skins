@@ -186,3 +186,22 @@ test("range values must sit on the declared step grid", () => {
 test("scope objects must carry exactly their canonical keys", () => {
   assert.deepEqual(validateOverride("tgcf", "slogan", { zh: "一", en: "One", fr: "Un" }), { ok: false, code: "BAD_SHAPE" });
 });
+
+test("legacy skin catalog defaults are same-source with the factories' static dictionaries (ADR-0004)", async () => {
+  const { createOpenBmcHarness } = await import("../src/client/skins/openbmc-harness/index.js");
+  const { createUefiHarness } = await import("../src/client/skins/uefi-harness/index.js");
+  const stubJsx = { jsx: () => null };
+  for (const [skinId, factory] of [["openbmc", createOpenBmcHarness], ["uefi-harness", createUefiHarness]]) {
+    const skin = factory(stubJsx);
+    const slogan = getField(skinId, "slogan");
+    assert.notEqual(slogan, null, `${skinId} must declare a slogan field`);
+    assert.deepEqual(slogan.default, skin.slogans, `${skinId} slogan default must be same-source with the factory's static slogans`);
+    assert.equal(slogan.maxLength, 40);
+    const panelOpacity = getField(skinId, "panelOpacity");
+    assert.notEqual(panelOpacity, null, `${skinId} must declare a panelOpacity field`);
+    assert.equal(panelOpacity.default, 55, "default P anchors the baked visuals");
+    assert.equal(panelOpacity.min, 0);
+    assert.equal(panelOpacity.max, 100);
+    assert.equal(panelOpacity.step, 1);
+  }
+});
