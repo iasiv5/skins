@@ -350,6 +350,16 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
   const css = h.cssText();
   assert.ok(css.includes(".dsh-skins-wide .dsh-skins-pz-panel{overflow-y:auto"),
     "wide mode: the panel column owns its scroll region");
+  assert.ok(css.includes(".dsh-skins-pz-panel{flex:0 1 700px"),
+    "panel column is shrinkable — the wide shell can never overflow horizontally");
+  assert.ok(css.includes("width:min(1105px"),
+    "wide shell sized for a 6-per-row wallpaper grid (v2.4.1 #3)");
+  assert.ok(css.includes(".dsh-skins-pz-thumbs{display:grid;grid-template-columns:repeat(6,1fr)"),
+    "wallpaper grid shows 6 thumbnails per row");
+  assert.ok(css.includes(".dsh-skins-pz-thumbs{grid-template-columns:repeat(4,1fr)"),
+    "stacked (<904px) mode falls back to 4 columns");
+  assert.ok(css.includes(".dsh-skins-pz-fields-locale{flex-direction:row"),
+    "locale inputs sit side by side in the wide panel");
   assert.ok(css.includes(".dsh-skins-pz-actions{position:sticky"),
     "the action bar stays in view while the panel scrolls (Q50)");
   assert.ok(css.includes(".dsh-skins-pz-del{position:absolute"),

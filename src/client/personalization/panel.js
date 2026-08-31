@@ -50,9 +50,14 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
           placeholder: field.default ?? "",
           onChange: (event) => onValue(event.target.value),
         })];
+    // Locale inputs sit side by side (v2.4.1 #3): the wide panel makes the
+    // stacked zh/en pair both ugly and needlessly tall.
     return jsx("label", { className: "dsh-skins-pz-row", children: [
       jsx("span", { className: "dsh-skins-pz-label", children: tr(field.labelKey) }),
-      jsx("div", { className: "dsh-skins-pz-fields", children: inputs }),
+      jsx("div", {
+        className: `dsh-skins-pz-fields${field.scope === "locale" ? " dsh-skins-pz-fields-locale" : ""}`,
+        children: inputs,
+      }),
     ] });
   }
 
