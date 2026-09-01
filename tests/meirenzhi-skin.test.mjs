@@ -30,21 +30,18 @@ test("skin contract: identity, slots and 12 builtin assets", () => {
   }
 });
 
-test("brand contract: bundled mark, brush letterforms and badge inversion are pinned", () => {
-  // Mark = user-provided dragon plate, transcoded to WebP (128px q90) and
+test("brand contract: bundled mark, gradient name and badge inversion are pinned", () => {
+  // Mark = user-provided 掌天瓶 icon, transcoded to WebP (96px q75) and
   // inlined as a data URL — the image itself is the source of truth now.
   const mark = skin.Mark({});
   assert.ok(String(mark.props.src).startsWith("data:image/webp;base64,"));
-  assert.ok(String(mark.props.src).length > 2000, "bundled dragon webp must be present");
+  assert.ok(String(mark.props.src).length > 1500, "bundled bottle webp must be present");
   assert.equal(mark.props["aria-hidden"], "true");
-  // Name = hand-drawn brush letterforms: five glyph groups sharing the ink
-  // gradient (original SVG strokes, no font dependency).
+  // Name = the original gradient-clipped text (brush letterform SVG was tried
+  // and reverted as unreadable, 2026-09-01).
   const name = skin.Name({});
-  assert.equal(name.props.children[0].component, "img");
-  const nameSrc = decodeURIComponent(String(name.props.children[0].props.src).slice("data:image/svg+xml,".length));
-  assert.equal((nameSrc.match(/<g>/g) || []).length, 5, "five brush glyph groups (凡人修仙传)");
-  assert.ok(nameSrc.includes("dsh-mrz-ink"), "shared ink gradient");
-  assert.ok(nameSrc.includes("M78 12") && nameSrc.includes("M314 12"), "glyph anchors");
+  assert.equal(name.props.children[0].props.children, "凡人修仙传");
+  assert.equal(name.props.children[0].props.style.background, "linear-gradient(120deg, #A87B2F, #D9B45C 45%, #B8433F)");
   assert.equal(name.props.children[1].props.children, "BEAUTY");
   const css = skin.css;
   assert.ok(css.includes("body[data-dsh-meirenzhi-skin][data-ds-dark-theme] .dsh-mrz-badge{background:#FAF9F6;color:#12121A}"));
