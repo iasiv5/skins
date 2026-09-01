@@ -74,7 +74,10 @@ test("project at factory P=35: riding alphas, constants, scrim and blur", () => 
   assert.equal(t["--dsw-alias-brand-text"].dark, "#D9B45C");
   assert.equal(t["--dsw-alias-bg-overlay"].light, "rgba(252, 250, 246, 0.85)");
   assert.equal(t["--dsw-alias-bg-overlay"].dark, "rgba(24, 24, 34, 0.88)");
-  assert.equal(t["--dsw-specific-bubble"].dark, "#7E2D33");
+  assert.equal(t["--dsw-specific-bubble"].light, "rgba(184, 67, 63, 0.10)");
+  assert.equal(t["--dsw-specific-bubble"].dark, "rgba(24, 24, 34, 0.90)");
+  assert.equal(t["--dsw-specific-bubble-highlight"].light, "rgba(184, 67, 63, 0.18)");
+  assert.equal(t["--dsw-specific-bubble-highlight"].dark, "rgba(40, 40, 56, 0.92)");
   assert.deepEqual(fx.cssVariables, { "--dsh-mrz-glass-blur": { light: "1px", dark: "1px" } });
   assert.ok(fx.staticCss.includes("dsh-mrz-badge"));
   assert.equal(fx.decorations, null);

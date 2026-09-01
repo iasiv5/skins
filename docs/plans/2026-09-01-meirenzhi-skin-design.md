@@ -58,7 +58,8 @@
 |---|---|---|
 | `--dsw-alias-brand-primary`（=button fill） | `#B8433F` | `#E58A80` |
 | `--dsw-alias-brand-text`（=button hover） | `#A87B2F` | `#D9B45C` |
-| `--dsw-specific-bubble` | `#B8433F` | `#7E2D33` |
+| `--dsw-specific-bubble` | `rgba(184, 67, 63, 0.10)` 绯红轻纱 | `rgba(24, 24, 34, 0.90)` 玄夜 |
+| `--dsw-specific-bubble-highlight` | `rgba(184, 67, 63, 0.18)` | `rgba(40, 40, 56, 0.92)` |
 | `--dsw-alias-bg-overlay` | `rgba(252, 250, 246, 0.85)` | `rgba(24, 24, 34, 0.88)` |
 | `--dsw-alias-interactive-bg-hover` | `rgba(184, 67, 63, 0.08)` | `rgba(229, 138, 128, 0.14)` |
 | `--dsw-alias-interactive-bg-active` | `rgba(184, 67, 63, 0.14)` | `rgba(229, 138, 128, 0.20)` |
@@ -69,6 +70,11 @@
 面板底 light `rgba(250, 249, 246, t)` / dark `rgba(18, 18, 26, t)`（暖雾白 × 玄夜蓝紫，
 比 tgcf 暖墨黑冷一档）；侧栏 t+0.05 / t+0.17（ruling #15）；module-platform t / t+0.05；
 input-major t+0.05 / t+0.10；纱 `30·t²`（暖雾白 `252,250,246` / 玄夜 `16,16,26`）；模糊 `12·t²`。
+
+> 交付后调整（产品主人，2026-09-01 手测反馈）：用户气泡原为饱和红实底
+> （`#B8433F`/`#7E2D33`），明暗两态观感突兀。已参照 openbmc/uefi 的双 token
+> 结构改为——浅色态=品牌绯红轻透纱（0.10/0.18，融进暖雾白面板）、深色态=
+> 玄夜面板族较实底（0.90/0.92，亮字），并增补 `--dsw-specific-bubble-highlight`。
 
 明暗策略：出厂壁纸明暗**同图**（字段语义决定），**浅色态为主视觉**（001 本身浅调，
 近零损耗），深色态玄夜纱压色；明暗差异由 overlay `::after` 与 token 承担，
