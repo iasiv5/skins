@@ -5,8 +5,9 @@
  * The 12 bundled wallpapers (4 group + 8 solo, generated
  * by scripts/build-meirenzhi-wallpapers.mjs) are AI-generated fan art the
  * product owner supplied for bundling — NOT official《凡人修仙传》material.
- * The 掌天瓶 (mysterious little bottle) brand mark/favicon is an original
- * code-drawn SVG; the 美人志 badge is rendered with HTML/CSS and the
+ * The dragon brand mark/favicon (golden dragon on a red rounded plate, per
+ * the product owner's reference image) is an original code-drawn SVG; the
+ * BEAUTY badge is rendered with HTML/CSS and the
  * fireflies with CSS pseudo-elements + radial gradients. The personalization
  * contract lives in src/shared/personalization/catalog.js. Effects are
  * produced by `project()` (values → SkinEffects) and executed by the generic
@@ -30,17 +31,26 @@ import {
 
 const SCOPE = "body[data-dsh-meirenzhi-skin]";
 
-// 掌天瓶配色基准（产品主人提供的绿瓶图）：深绿描边 + 玉绿渐变瓶身 +
-// 浅绿叶脉纹 + 底部一点鎏金反光；背景金色光线不入画（24px 噪声）。
+// 龙标配色（产品主人 2026-09-01 裁决：掌天瓶退役，换用其提供的金龙红底
+// 圆角方标，原创代码绘制）：红底渐变 + 金边双线框 + 金身 S 形龙（左顾张口、
+// 背鳍锯齿、甩尾），配色自参考图取码。
 const MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
-  + `<defs><linearGradient id="dsh-mrz-jade" x1="0" y1="0" x2="0" y2="1">`
-  + `<stop offset="0" stop-color="#BFE3A8"/><stop offset="1" stop-color="#6FAF7C"/>`
-  + `</linearGradient></defs>`
-  + `<rect x="26.5" y="5" width="11" height="7" rx="2.4" fill="#8C6B3F" stroke="#2E6B3E" stroke-width="1.4"/>`
-  + `<path d="M27 12 h10 l1.2 7.2 c6.4 2.6 10.8 8.8 10.8 16 C49 44.6 41.4 52 32 52 s-17-7.4-17-16.8 c0-7.2 4.4-13.4 10.8-16 L27 12 Z" fill="url(#dsh-mrz-jade)" stroke="#2E6B3E" stroke-width="2" stroke-linejoin="round"/>`
-  + `<path d="M32 20 c-4.2 4.2 -6.2 8.4 -6.2 13.6 M32 20 c4.2 4.2 6.2 8.4 6.2 13.6 M32 20 v20" fill="none" stroke="#DFF2D0" stroke-width="1.6" stroke-linecap="round"/>`
-  + `<path d="M24.5 52 h15" stroke="#2E6B3E" stroke-width="2" stroke-linecap="round"/>`
-  + `<path d="M23 46.5 c2.9 1.9 5.9 2.8 9 2.8 s6.1-0.9 9-2.8" fill="none" stroke="#D9B45C" stroke-width="1.6" stroke-linecap="round"/>`
+  + `<defs>`
+  + `<linearGradient id="dsh-mrz-red" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D8402F"/><stop offset="1" stop-color="#9E1B14"/></linearGradient>`
+  + `<linearGradient id="dsh-mrz-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE066"/><stop offset="1" stop-color="#D4A017"/></linearGradient>`
+  + `</defs>`
+  + `<rect x="4" y="4" width="56" height="56" rx="11" fill="url(#dsh-mrz-red)" stroke="#E8B923" stroke-width="3"/>`
+  + `<rect x="8.5" y="8.5" width="47" height="47" rx="7.5" fill="none" stroke="#E8B923" stroke-width="1" opacity="0.55"/>`
+  + `<path d="M30 22 C42 20 50 27 49 36 C48 44 40 48 34 45" fill="none" stroke="url(#dsh-mrz-gold)" stroke-width="7" stroke-linecap="round"/>`
+  + `<path d="M8 22 L18 14 C22 8 30 8 32 13 L29 20 C25 25 17 26 12 25 Z" fill="url(#dsh-mrz-gold)" stroke="#B8860B" stroke-width="1.2" stroke-linejoin="round"/>`
+  + `<path d="M22 11 C24 5 31 3 35 6 C31 7 28 10 27 13 Z" fill="url(#dsh-mrz-gold)" stroke="#B8860B" stroke-width="1"/>`
+  + `<path d="M28 12 C33 8 39 9 41 13 C37 12 33 14 31 16 Z" fill="url(#dsh-mrz-gold)" stroke="#B8860B" stroke-width="1"/>`
+  + `<path d="M8 22 L16 23" stroke="#B8860B" stroke-width="1"/>`
+  + `<path d="M40 20 l4 -4 0 6 Z" fill="#FFE066" stroke="#B8860B" stroke-width="0.8"/>`
+  + `<path d="M46 24 l5 -2 -2 5 Z" fill="#FFE066" stroke="#B8860B" stroke-width="0.8"/>`
+  + `<path d="M49 31 l5 1 -4 4 Z" fill="#FFE066" stroke="#B8860B" stroke-width="0.8"/>`
+  + `<path d="M33 44 l-2 6 5 -3 Z" fill="#FFE066" stroke="#B8860B" stroke-width="0.8"/>`
+  + `<circle cx="15.5" cy="19.5" r="1.8" fill="#7A1010"/>`
   + `</svg>`;
 const MARK_URL = "data:image/svg+xml," + encodeURIComponent(MARK_SVG);
 
@@ -163,7 +173,7 @@ export function createMeirenzhiSkin(jsxRuntime) {
   const { jsx } = jsxRuntime;
 
   function MeiRenZhiMark({ size = 24, className }) {
-    // 掌天瓶 mark rides a plain img so the bundled SVG data URL works in
+    // Dragon mark rides a plain img so the bundled SVG data URL works in
     // every slot that renders it; alt="" + aria-hidden keep it decorative.
     return jsx("img", {
       src: MARK_URL,
@@ -198,7 +208,7 @@ export function createMeirenzhiSkin(jsxRuntime) {
           },
           children: "凡人修仙传",
         }),
-        jsx("span", { className: "dsh-mrz-badge", children: "美人志" }),
+        jsx("span", { className: "dsh-mrz-badge", children: "BEAUTY" }),
       ],
     });
   }

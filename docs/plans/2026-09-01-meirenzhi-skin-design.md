@@ -8,7 +8,8 @@
   libwebp `-quality 80`，不做逐图降质、不回退宽度；字节护栏仅作源图漂移检测
   （单张 ≤640,000 B、合计 ≤4,700,000 B，实测 4,539,816 B）。
 - 素材声明：12 张壁纸均为 **AI 生成同人图，非官方《凡人修仙传》素材，不标注生成工具**；
-  掌天瓶 mark/favicon 为原创代码绘制 SVG，美人志徽章由 HTML/CSS 绘制，萤火粒子由
+  龙标 mark/favicon（金龙红底圆角方，参照产品主人提供的龙标图）为原创代码绘制
+  SVG，BEAUTY 徽章由 HTML/CSS 绘制，萤火粒子由
   CSS 伪元素与径向渐变绘制——均不包含官方素材。源图 sha256 逐张记录于
   `src/client/skins/meirenzhi/wallpapers.js` 头注释。
 
@@ -21,7 +22,7 @@
 | description | zh「云鬓花颜 · 霞衣夜月 · 凡尘问道」/ en "Moonlit silks · crimson & gold · mortal path"（三段式为 smoke 既有规则所要求） |
 | body 属性 | `dshMeirenzhiSkin`（attr `data-dsh-meirenzhi-skin`） |
 | style tag / 变量前缀 | `dsh-skins/meirenzhi` / `--dsh-mrz-*` |
-| titleBrand / favicon | 「美人志」/ 掌天瓶 SVG data URL |
+| titleBrand / favicon | 「美人志」/ 龙标 SVG data URL |
 | 注册顺序 | 第 1 位（出厂皮肤），其后 openbmc / uefi-harness / tgcf |
 
 出厂皮肤语义：仅当无 URL 参数、无 localStorage 选择时兜底 `order[0]`；用户显式选择
@@ -82,11 +83,15 @@ runtime 不生成暗色专用 `::before`。
 
 ## 品牌组件
 
-- **Mark = 掌天瓶**（配色基准：产品主人提供的绿瓶图）：瓶塞 `#8C6B3F`、深绿描边
-  `#2E6B3E`、玉绿渐变瓶身 `#BFE3A8→#6FAF7C`、浅绿叶脉 `#DFF2D0`、足线 `#2E6B3E`、
-  底部鎏金反光 `#D9B45C`；背景金色光线不入画。SVG data URL 同时供 mark 与 favicon。
+- **Mark = 龙标**（2026-09-01 产品主人裁决：掌天瓶退役；配色基准为其提供的
+  金龙红底圆角方图）：红底渐变 `#D8402F→#9E1B14`、金边双线框 `#E8B923`、
+  金身渐变 `#FFE066→#D4A017`、暗金描边 `#B8860B`、红瞳 `#7A1010`。原创代码绘制
+  SVG，data URL 同时供 mark 与 favicon。
 - **Name**：「凡人修仙传」渐变字（`#A87B2F → #D9B45C → #B8433F`）+ 反色徽章
-  「美人志」——亮=玄夜底 `#12121A` + 雾白字 `#FAF9F6`，暗=雾白底 + 玄夜字（tgcf badge 反转结构）。
+  **BEAUTY**（2026-09-01 裁决：原「美人志」三字换英文）——亮=玄夜底 `#12121A` +
+  雾白字 `#FAF9F6`，暗=雾白底 + 玄夜字（tgcf badge 反转结构）。
+  待办：「凡人修仙传」五字按产品主人后续提供的字体参考图重绘（未收到图，暂维持
+  浏览器渐变字渲染）。
 
 ## 动效
 

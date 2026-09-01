@@ -32,10 +32,11 @@ test("skin contract: identity, slots and 12 builtin assets", () => {
 
 test("brand contract: mark palette, name copy and badge inversion are pinned", () => {
   const svg = decodeURIComponent(skin.favicon.slice("data:image/svg+xml,".length));
-  for (const color of ["#BFE3A8", "#6FAF7C", "#2E6B3E", "#DFF2D0", "#D9B45C", "#8C6B3F"]) {
+  // 龙标（2026-09-01 掌天瓶退役）：红底渐变 + 金边双线框 + 金身 + 暗金描边 + 红瞳。
+  for (const color of ["#D8402F", "#9E1B14", "#E8B923", "#FFE066", "#D4A017", "#B8860B", "#7A1010"]) {
     assert.ok(svg.includes(color), `mark svg must carry ${color}`);
   }
-  for (const fragment of ["linearGradient", "M32 20", "M27 12 h10", "M24.5 52"]) {
+  for (const fragment of ["linearGradient", "M8 22", "M30 22 C42 20", "rx=\"11\""]) {
     assert.ok(svg.includes(fragment), `mark svg must carry ${fragment}`);
   }
   const mark = skin.Mark({});
@@ -43,7 +44,7 @@ test("brand contract: mark palette, name copy and badge inversion are pinned", (
   assert.equal(mark.props["aria-hidden"], "true");
   const name = skin.Name({});
   assert.equal(name.props.children[0].props.children, "凡人修仙传");
-  assert.equal(name.props.children[1].props.children, "美人志");
+  assert.equal(name.props.children[1].props.children, "BEAUTY");
   const css = skin.css;
   assert.ok(css.includes("body[data-dsh-meirenzhi-skin][data-ds-dark-theme] .dsh-mrz-badge{background:#FAF9F6;color:#12121A}"));
   assert.ok(css.includes("@keyframes dsh-mrz-drift-a"));
