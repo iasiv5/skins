@@ -456,3 +456,161 @@ test("queued writes are skipped after dispose (no post-dispose PATCH)", async ()
   await flushing;
   assert.equal(patches.length, 0, "disposed client must not send writes");
 });
+
+// -- uploadImage timeouts (field report: "稍微大一点的图片就上传不上来") -----
+// The config-fetch window (3s in production) must never govern POST /library:
+// a multi-MB body over a WAN upstream needs the extended upload window, and a
+// rejected fetch must land in the panel as a mapped error, not an unhandled
+// rejection. These fakes RESPECT init.signal like a real fetch would.
+
+/** Fake fetch that aborts like a real one: honors init.signal, never resolves otherwise. */
+function hangingUploadFetch() {
+  return makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(new DOMException("The operation was aborted.", init.signal?.reason?.name ?? "AbortError"));
+      if (init.signal?.aborted) return abort();
+      init.signal?.addEventListener("abort", abort, { once: true });
+    });
+  });
+}
+
+test("uploadImage uses the extended upload window, not the config-fetch timeout", async () => {
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(new DOMException("aborted", "TimeoutError"));
+      if (init.signal?.aborted) return abort();
+      init.signal?.addEventListener("abort", abort, { once: true });
+      setTimeout(() => resolve(jsonResponse(201, { asset: { id: "u_slow" } })), 150);
+    });
+  });
+  // 150ms response: past the 50ms config window, inside the 500ms upload window.
+  const client = createConfigClient({ fetchImpl, timeoutMs: 50, uploadTimeoutMs: 500 });
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.equal(result.error, undefined, "the short fetch window must not abort the upload");
+  assert.equal(result.asset.id, "u_slow");
+  client.dispose();
+});
+
+test("a timed-out upload resolves to UPLOAD_TIMEOUT instead of throwing", async () => {
+  const fetchImpl = hangingUploadFetch();
+  const client = createConfigClient({ fetchImpl, timeoutMs: 50, uploadTimeoutMs: 100 });
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.deepEqual(result, { error: "UPLOAD_TIMEOUT" });
+  assert.equal(client.getState().status, "synced", "a failed upload never degrades the session state");
+  client.dispose();
+});
+
+test("a network-rejected upload resolves to UPLOAD_FAILED instead of throwing", async () => {
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    return Promise.reject(new TypeError("fetch failed"));
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.deepEqual(result, { error: "UPLOAD_FAILED" });
+  client.dispose();
+});
+
+test("an edge-proxy HTML 413 normalizes to UPLOAD_TOO_LARGE (named cause, not generic)", async () => {
+  // nginx client_max_body_size rejects with an HTML body — response.json()
+  // throws, so there is no Host code; the status alone must still map to
+  // the size-limit copy (field report: a >25MB batch outlier showed the
+  // generic upload-failed copy).
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    return {
+      status: 413,
+      ok: false,
+      async json() { throw new SyntaxError("Unexpected token '<'"); },
+    };
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.deepEqual(result, { error: "UPLOAD_TOO_LARGE" });
+  client.dispose();
+});
+
+// -- connection-level upload failures retry once (field report: 010南宫婉) ---
+// The harness webserver answers a broken request stream (stale keep-alive
+// socket between the proxy chain and node) with a bare empty 400 — no code,
+// no log line. Two of 12 sequential batch uploads died this way while their
+// siblings succeeded. The client must treat a rejected fetch and a bare 400
+// alike: reconcile the library (dedupe) and re-POST exactly once.
+
+/** A bare empty 400 exactly like dsh-host-webserver's stream-error reply. */
+function bare400() {
+  return { status: 400, ok: false, async json() { throw new SyntaxError("Unexpected end of JSON input"); } };
+}
+
+test("a bare 400 (stream-error reply) retries once and lands the upload", async () => {
+  const posts = [];
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    posts.push(index);
+    return posts.length === 1 ? bare400() : jsonResponse(201, { asset: { id: "u_retried" } });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.equal(result.asset.id, "u_retried", "the retry lands the upload");
+  assert.equal(posts.length, 2, "exactly one re-POST after the connection-level failure");
+  client.dispose();
+});
+
+test("a bare 400 on both attempts resolves to UPLOAD_FAILED with exactly two POSTs", async () => {
+  const posts = [];
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    posts.push(index);
+    return bare400();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.deepEqual(result, { error: "UPLOAD_FAILED" });
+  assert.equal(posts.length, 2, "no third attempt");
+  client.dispose();
+});
+
+test("a lost response after a landed upload reconciles by sha256 instead of re-POSTing", async () => {
+  const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const digestHex = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+  const stored = { id: "u_already", displayName: "wallpaper", byteLength: 8, sha256: digestHex };
+  let posts = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") {
+      // boot sees an empty library; the post-failure refetch sees the landed asset.
+      return snapshotBody({ library: index >= 2 ? [stored] : [] });
+    }
+    posts += 1;
+    return Promise.reject(new TypeError("fetch failed")); // response lost mid-flight
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const result = await client.uploadImage(bytes);
+  assert.equal(result.asset.id, "u_already", "the stored asset is returned, not duplicated");
+  assert.equal(posts, 1, "the retry never re-POSTs when the first attempt already landed");
+  client.dispose();
+});
+
+test("a Host-coded 400 is a concluded answer and never retried", async () => {
+  let posts = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method !== "POST") return snapshotBody();
+    posts += 1;
+    return jsonResponse(400, { error: "文件展示名无效", code: "FILENAME_INVALID" });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  const result = await client.uploadImage(new Uint8Array(8));
+  assert.deepEqual(result, { error: "FILENAME_INVALID" });
+  assert.equal(posts, 1, "coded errors reached the store logic — retrying cannot help");
+  client.dispose();
+});

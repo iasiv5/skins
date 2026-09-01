@@ -33,6 +33,13 @@ import { defaultsFor } from "../../shared/personalization/catalog.js";
 
 const CHANNEL = "dsh-skins";
 const FETCH_TIMEOUT_MS = 3000;
+// Uploads carry up to 20MB bodies (the Host's GLOBAL_MAX_BYTES) over WAN
+// upstreams, so the 3s config-fetch window must never govern them —
+// AbortSignal.timeout is wall-clock from request start and would abort a
+// multi-megabyte transfer mid-flight (field report: "稍微大一点的图片就上传
+// 不上来"). Still a hard cap, not an idle timeout: a hung connection must
+// release the panel's sequential batch loop instead of pinning it forever.
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 function cloneSkins(skins) {
   return skins === undefined || skins === null ? {} : structuredClone(skins);
@@ -42,6 +49,7 @@ export function createConfigClient(options = {}) {
   const fetchImpl = options.fetchImpl ?? (typeof fetch === "function" ? fetch : null);
   const baseUrl = options.baseUrl ?? "/dsh-skins";
   const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const uploadTimeoutMs = options.uploadTimeoutMs ?? UPLOAD_TIMEOUT_MS;
 
   if (typeof fetchImpl !== "function") throw new Error("config client requires a fetch implementation");
 
@@ -307,23 +315,104 @@ export function createConfigClient(options = {}) {
 
   // -- asset operations (library management for the panel) -------------------
 
-  async function uploadImage(file, displayName) {
-    const blocked = gateWrites();
-    if (blocked !== null) return { error: blocked };
-    const bytes = file instanceof Uint8Array ? file : new Uint8Array(await file.arrayBuffer());
-    const response = await request("/library", {
+  /** SHA-256 hex of the bytes, when the platform provides WebCrypto. */
+  async function assetFingerprint(bytes) {
+    if (typeof crypto?.subtle?.digest !== "function") return null;
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  /**
+   * One POST /library attempt. The signal is created per attempt (a
+   * TimeoutError from the previous attempt's signal must not poison the
+   * retry); everything else about the request is identical.
+   */
+  function attemptUpload(bytes, file, displayName) {
+    return request("/library", {
       method: "POST",
+      // The extended upload window (see UPLOAD_TIMEOUT_MS); request()'s
+      // short config-fetch timeout must never govern a 20MB body.
+      signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(uploadTimeoutMs) : undefined,
       headers: {
         "content-type": typeof file?.type === "string" && file.type !== "" ? file.type : "application/octet-stream",
         "x-filename": encodeURIComponent(displayName ?? file?.name ?? "wallpaper"),
       },
       body: bytes,
     });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      return { error: body?.code ?? `HTTP ${response.status}` };
+  }
+
+  /**
+   * Interpret one attempt's outcome. Returns `{ asset }` / `{ error }` on a
+   * concluded answer, or `null` when the failure is connection-level (fetch
+   * rejected, or the harness webserver's bare empty-400 on a broken request
+   * stream — a stale keep-alive socket between the reverse-proxy chain and
+   * node) and MAY be retried. Field report: 2 of 12 batch uploads died this
+   * way mid-batch while their siblings succeeded; a single retry heals it.
+   */
+  async function interpretAttempt(response, networkError) {
+    if (networkError !== undefined) {
+      const timedOut = networkError?.name === "TimeoutError" || networkError?.name === "AbortError";
+      // A rejected fetch surfaces as a panel message, never as an unhandled
+      // rejection (field report: aborted uploads escaped both panel call
+      // sites uncaught, so oversized images failed without any feedback).
+      return timedOut ? { error: "UPLOAD_TIMEOUT" } : null; // null → retryable
     }
-    const body = await response.json();
+    if (response.ok) return { kind: "ok", response };
+    const body = await response.json().catch(() => null);
+    // A Host-coded error is a concluded answer (the upload reached the store).
+    if (body?.code) return { error: body.code };
+    // An edge proxy (nginx client_max_body_size) rejects oversized bodies
+    // with an HTML 413 that carries no Host error code — normalize it to
+    // UPLOAD_TOO_LARGE so the panel names the real cause.
+    if (response.status === 413) return { error: "UPLOAD_TOO_LARGE" };
+    // Bare 400 (empty body, no code) = the harness webserver's stream-error
+    // reply: connection-level, retryable. Anything else unmapped stands.
+    if (response.status === 400) return null; // null → retryable
+    return { error: `HTTP ${response.status}` };
+  }
+
+  async function uploadImage(file, displayName) {
+    const blocked = gateWrites();
+    if (blocked !== null) return { error: blocked };
+    const bytes = file instanceof Uint8Array ? file : new Uint8Array(await file.arrayBuffer());
+
+    let networkError;
+    let response;
+    try {
+      response = await attemptUpload(bytes, file, displayName);
+    } catch (error) {
+      networkError = error;
+    }
+    let outcome = await interpretAttempt(response, networkError);
+    if (outcome !== null) return concludeUpload(outcome);
+
+    // Connection-level failure: before re-POSTing, reconcile against the
+    // library — if the first attempt actually landed server-side but the
+    // response was lost, a blind retry would store a duplicate blob.
+    await refetch();
+    const fingerprint = await assetFingerprint(bytes);
+    const stored = snapshot.library.find((a) => (
+      fingerprint !== null ? a.sha256 === fingerprint
+        : a.byteLength === bytes.length && a.displayName === (displayName ?? file?.name ?? "wallpaper")
+    ));
+    if (stored) return { asset: stored };
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    try {
+      response = await attemptUpload(bytes, file, displayName);
+    } catch {
+      return { error: "UPLOAD_FAILED" };
+    }
+    outcome = await interpretAttempt(response, undefined);
+    if (outcome === null || outcome.kind !== "ok") {
+      return outcome?.error !== undefined ? { error: outcome.error } : { error: "UPLOAD_FAILED" };
+    }
+    return concludeUpload(outcome);
+  }
+
+  async function concludeUpload(outcome) {
+    if (outcome.error !== undefined) return { error: outcome.error };
+    const body = await outcome.response.json();
     await refetch();
     announce();
     return { asset: body.asset };

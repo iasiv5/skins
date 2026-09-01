@@ -383,6 +383,46 @@ test("a rejected upload surfaces the server's reason — never the delete copy",
   assert.equal(textsOf(b.tree()).includes("personalization.library.deleteFailed"), false, "delete copy still never renders");
 });
 
+test("UPLOAD_TIMEOUT renders its localized reason (field report: big uploads failed silently)", async () => {
+  // The client-side fetch abort lands as code UPLOAD_TIMEOUT; the panel must
+  // name it through HOST_ERROR_KEYS — the pre-fix behavior was NO message at
+  // all (the abort escaped uploadImage as an unhandled rejection).
+  const config = makeConfigClient({ status: "synced" });
+  config.uploadImage = async () => ({ error: "UPLOAD_TIMEOUT" });
+  const panel = mountPanel({
+    skinId: "tgcf", status: "synced", config,
+    translations: { "host.personalization.uploadTimeout": "上传超时，请检查网络后重试" },
+  });
+  await tick();
+  const input = flatten(panel.tree()).find((n) => n.type === "input" && n.props.type === "file");
+  await input.props.onChange({ target: { files: [{ name: "big.png" }], value: "" } });
+  const texts = textsOf(panel.tree());
+  assert.ok(texts.includes("上传超时，请检查网络后重试"), "the timeout code renders its localized reason");
+  assert.equal(texts.includes("personalization.library.deleteFailed"), false, "delete copy never renders for a timeout");
+
+  // Batch path: a timeout among successes surfaces through the summary
+  // (all-fail batches show the bare reason — see the all-fail test below).
+  const batch = makeConfigClient({ status: "synced" });
+  batch.uploadImage = async (file) => (
+    file.name === "a.png" ? { asset: { id: "u_a" } } : { error: "UPLOAD_TIMEOUT" }
+  );
+  const batchPanel = mountPanel({
+    skinId: "tgcf", status: "synced", config: batch,
+    translations: {
+      "host.personalization.uploadTimeout": "上传超时，请检查网络后重试",
+      "personalization.library.uploadSomeFailed": "已上传 {ok} 张，{failed} 张失败（{reason}）",
+    },
+  });
+  await tick();
+  const inputB = flatten(batchPanel.tree()).find((n) => n.type === "input" && n.props.type === "file");
+  await inputB.props.onChange({ target: { files: [{ name: "a.png" }, { name: "b.png" }], value: "" } });
+  const batchTexts = textsOf(batchPanel.tree());
+  assert.ok(batchTexts.some((t) => t.includes("已上传 1 张，1 张失败")), "the batch summary counts the timeout");
+  assert.ok(batchTexts.some((t) => t.includes("上传超时")), "the timeout reason is surfaced in the batch summary");
+  assert.deepEqual(batch.calls.preview.at(-1), { skinId: "tgcf", key: "wallpaper", value: "u_a" },
+    "selection still lands on the last success");
+});
+
 test("batch upload (Q43 reversal): sequential, lands on the last success, summarizes failures", async () => {
   const dictsSource = readFileSync("src/client/dicts.js", "utf8");
   assert.ok(dictsSource.includes('"personalization.library.uploadingBatch"'), "uploadingBatch key exists");

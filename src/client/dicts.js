@@ -98,6 +98,7 @@ export const DICTS = {
     "host.personalization.readonly": "配置为更高版本创建，当前只读",
     "host.personalization.recoveryRequired": "配置状态待恢复，请先在个性化面板确认恢复",
     "host.personalization.unknownSkin": "皮肤不存在",
+    "host.personalization.uploadTimeout": "上传超时，请检查网络后重试",
     // Host-reported errors, keyed by the stable `code` the Host attaches to
     // every user-facing error (see HOST_ERROR_KEYS). The Host keeps a zh
     // fallback message; the client renders the localized template instead.
@@ -221,6 +222,7 @@ export const DICTS = {
     "host.personalization.readonly": "Created by a newer config version; read-only",
     "host.personalization.recoveryRequired": "Configuration needs recovery; confirm it in the personalization panel first",
     "host.personalization.unknownSkin": "Skin not found",
+    "host.personalization.uploadTimeout": "Upload timed out; check your connection and retry",
     "host.restart.unavailable": "This DSH Host cannot restart itself",
     "host.restart.noPending": "No update is waiting to be applied by a restart",
     "host.update.linkProtected": "Local link development installs are never overwritten by online updates",
@@ -289,6 +291,10 @@ export const HOST_ERROR_KEYS = {
   ROLLBACK_LOCKFILE_MISMATCH: "host.rollback.lockfileMismatch",
   ROLLBACK_BUNDLE_MISSING: "host.rollback.bundleMissing",
   UPLOAD_TOO_LARGE: "host.personalization.tooLarge",
+  // UPLOAD_TIMEOUT: client-side fetch abort (config-client uploadImage).
+  // UPLOAD_FAILED (any other rejected upload fetch) is intentionally unmapped —
+  // resolveHostErrorText falls back to the panel's generic uploadFailed copy.
+  UPLOAD_TIMEOUT: "host.personalization.uploadTimeout",
   UNSUPPORTED_IMAGE: "host.personalization.unsupportedImage",
   ANIMATION_UNSUPPORTED: "host.personalization.animatedWebp",
   DISK_FULL: "host.personalization.diskFull",
