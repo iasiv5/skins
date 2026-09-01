@@ -50,6 +50,9 @@ test("brand contract: mark palette, name copy and badge inversion are pinned", (
   assert.ok(css.includes("@keyframes dsh-mrz-drift-b"));
   assert.ok(css.includes("prefers-reduced-motion:reduce"));
   assert.ok(css.includes("#root::before") && css.includes("#root::after"));
+  // 泡泡边框（openbmc 同款）：明暗各一套品牌色描边 + 轻投影，框出用户输入区。
+  assert.ok(css.includes("body[data-dsh-meirenzhi-skin] .gdEzaW_bubble{border:1px solid rgba(184, 67, 63, 0.38);box-shadow:0 1px 4px rgba(184, 67, 63, 0.10)}"));
+  assert.ok(css.includes("body[data-dsh-meirenzhi-skin][data-ds-dark-theme] .gdEzaW_bubble{border-color:rgba(229, 138, 128, 0.38);box-shadow:0 1px 6px rgba(229, 138, 128, 0.10)}"));
 });
 
 test("project at factory P=35: riding alphas, constants, scrim and blur", () => {

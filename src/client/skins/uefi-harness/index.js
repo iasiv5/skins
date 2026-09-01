@@ -111,6 +111,17 @@ body[data-dsh-uefi-harness] [id="root"] { background: transparent; }
 body[data-dsh-uefi-harness] [data-streaming] {
   border-radius: 4px;
   box-shadow: inset 3px 0 0 var(--dsw-alias-brand-primary);
+}
+/* 用户气泡描边 + 轻投影（openbmc 同款泡泡边框：框出用户输入区）。哈希类
+ * gdEzaW_bubble 随 conversation 插件版本构建，版本升级若失效仅影响描边
+ * 装饰，token 填充仍然生效。 */
+body[data-dsh-uefi-harness] .gdEzaW_bubble {
+  border: 1px solid rgba(101, 83, 216, 0.38);
+  box-shadow: 0 1px 4px rgba(101, 83, 216, 0.10);
+}
+body[data-dsh-uefi-harness][data-ds-dark-theme] .gdEzaW_bubble {
+  border-color: rgba(169, 156, 255, 0.38);
+  box-shadow: 0 1px 6px rgba(169, 156, 255, 0.10);
 }`;
 
   /** 背景原画 · 鎏金电路板微距（480x346 原摄 → 1920x1384 WebP，70KB；4x 虚化景深读作 bokeh，仅四角微压靛影以保留金色辉光） */
