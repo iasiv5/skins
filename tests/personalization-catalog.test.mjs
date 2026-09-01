@@ -167,12 +167,15 @@ test("accessors expose schema, fields, asset fields and defaults", () => {
   const schema = getSkinSchema("tgcf");
   assert.equal(schema.fields.length, 3);
   assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "panelOpacity"]);
-  // Three curated pieces since the 1.0.0 addition; moonlit is both the third
-  // choice and the factory default.
+  // Three curated pieces since the 1.0.0 addition; moonlit leads the grid
+  // (user ruling) and is the factory default.
   const wallpaperField = getField("tgcf", "wallpaper");
-  assert.deepEqual(wallpaperField.builtinChoices, ["crimson", "pale", "moonlit"]);
+  assert.deepEqual(wallpaperField.builtinChoices, ["moonlit", "crimson", "pale"]);
   assert.equal(wallpaperField.default, "builtin:tgcf:moonlit");
-  assert.deepEqual(Object.keys(schema.builtinAssets), ["crimson", "pale", "moonlit", "seal-favicon"]);
+  assert.deepEqual(Object.keys(schema.builtinAssets), ["moonlit", "crimson", "pale", "seal-favicon"]);
+  assert.equal(schema.builtinAssets.moonlit.labelKey, "personalization.tgcf.moonlit");
+  assert.equal(getSkinSchema("openbmc").builtinAssets.art.labelKey, "personalization.openbmc.art");
+  assert.equal(getSkinSchema("uefi-harness").builtinAssets.art.labelKey, "personalization.uefi.art");
   assert.equal(getField("tgcf", "blur"), null, "blur field retired by ruling #14");
   assert.equal(getField("tgcf", "panelOpacity").default, 35);
   assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper"]);

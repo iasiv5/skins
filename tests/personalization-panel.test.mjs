@@ -120,12 +120,18 @@ for (const skinId of SKINS) {
         assert.ok(texts.includes(field.labelKey), `${field.labelKey} renders`);
       }
       const actions = flatten(tree).find((n) => n.props?.className?.includes("dsh-skins-pz-actions"));
-      assert.notEqual(actions, null, "footer action bar renders");
       assert.equal(findButton(tree, "personalization.save"), null, "no save button (ADR-0003 auto-save)");
       assert.equal(findButton(tree, "personalization.restore"), null, "no revert button (ADR-0003)");
+      assert.equal(findButton(tree, "personalization.reset"), null, "clean skin: no reset control (v1.0.0 height ruling)");
       if (status === "offline-failed") {
+        assert.notEqual(actions, undefined, "offline banner renders in the footer status bar");
         assert.ok(texts.includes("personalization.status.offline"), "offline banner in the footer");
         assert.notEqual(findButton(tree, "personalization.status.retry"), null, "retry offered");
+      } else if (status === "synced") {
+        assert.ok(actions === undefined,
+          "no footer strip without status content — the panel's resting height never depends on state (v1.0.0 ruling)");
+      } else {
+        assert.notEqual(actions, undefined, "loading/readonly statuses keep their transient strip");
       }
     });
   }
@@ -171,6 +177,9 @@ test("恢复默认 confirms with the affected field list; decline is a no-op (us
   await tick();
   const reset = () => findButton(panel.tree(), "personalization.reset");
   assert.notEqual(reset(), null, "reset offered while overrides exist");
+  const head = flatten(panel.tree()).find((n) => n.props?.className === "dsh-skins-pz-head");
+  const resetInHead = head?.props?.children?.some?.((c) => c?.type === "button" && c?.props?.children === "personalization.reset");
+  assert.ok(resetInHead, "reset lives in the header row — its appearance cannot grow the panel (v1.0.0 height ruling)");
 
   // Agreeing: the dialog lists the non-default field(s), then everything
   // resets and flushes at once (ADR-0003 — immediate and auto-saved).
@@ -336,6 +345,8 @@ test("no theme UI and no theme keys remain anywhere (⑦)", () => {
   assert.ok(dictsSource.includes('"personalization.library.uploading"'), "uploading key exists");
   assert.ok(dictsSource.includes('"personalization.panelLabel"'), "panelLabel key exists");
   assert.ok(dictsSource.includes('"personalization.collapse"'), "collapse key exists (v1.0.0 header ruling)");
+  assert.ok(dictsSource.includes('"personalization.openbmc.art"'), "openbmc art label key exists");
+  assert.ok(dictsSource.includes('"personalization.uefi.art"'), "uefi art label key exists");
   // Direction pin (field report: the chevrons shipped pointing right, which
   // reads as "expand" — collapse travels left, the way the panel's edge moves;
   // and the compact `M11 6-6 …` path form rendered as a garbled bar in

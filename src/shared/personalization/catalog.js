@@ -67,16 +67,18 @@ const WALLPAPER_FIELD = {
 export const SKINS = {
   tgcf: {
     builtinAssets: {
+      // Registry mirrors the grid: the factory default (moonlit) leads.
+      moonlit: { mime: "image/webp", labelKey: "personalization.tgcf.moonlit" },
       crimson: { mime: "image/webp", labelKey: "personalization.tgcf.crimson" },
       pale: { mime: "image/webp", labelKey: "personalization.tgcf.pale" },
-      moonlit: { mime: "image/webp", labelKey: "personalization.tgcf.moonlit" },
       "seal-favicon": { mime: "image/webp" },
     },
     fields: [
-      // Factory default rides the third curated piece (moonlit, 花怜 ·
-      // 月下同伞) since the 1.0.0 wallpaper addition; crimson/pale remain
-      // selectable, and stored overrides are untouched by the default flip.
-      { ...WALLPAPER_FIELD, default: "builtin:tgcf:moonlit", builtinChoices: ["crimson", "pale", "moonlit"] },
+      // Factory default rides moonlit (花怜 · 月下同伞) since the 1.0.0
+      // wallpaper addition; it leads the grid (user ruling) and its label
+      // carries the （默认壁纸） suffix. crimson/pale remain selectable, and
+      // stored overrides are untouched by the default flip.
+      { ...WALLPAPER_FIELD, default: "builtin:tgcf:moonlit", builtinChoices: ["moonlit", "crimson", "pale"] },
       {
         key: "slogan",
         type: "text",
@@ -115,7 +117,7 @@ export const SKINS = {
   // Legacy wallpaper semantics (scrim never applies to user images,
   // placeholder branch) live inside each skin's project() branches.
   openbmc: {
-    builtinAssets: { art: { mime: "image/webp", labelKey: "personalization.builtin.default" } },
+    builtinAssets: { art: { mime: "image/webp", labelKey: "personalization.openbmc.art" } },
     fields: [
       { ...WALLPAPER_FIELD, default: "builtin:openbmc:art", builtinChoices: ["art"] },
       {
@@ -140,7 +142,7 @@ export const SKINS = {
     ],
   },
   "uefi-harness": {
-    builtinAssets: { art: { mime: "image/webp", labelKey: "personalization.builtin.default" } },
+    builtinAssets: { art: { mime: "image/webp", labelKey: "personalization.uefi.art" } },
     fields: [
       { ...WALLPAPER_FIELD, default: "builtin:uefi-harness:art", builtinChoices: ["art"] },
       {

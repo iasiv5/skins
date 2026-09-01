@@ -206,13 +206,13 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 | key | type×scope | 约束 | 出厂默认 | labelKey | 投影目标 |
 |---|---|---|---|---|---|
-| wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签三选（v2.4.1 #6 两幅 + 1.0.0 第三幅） | **`builtin:tgcf:moonlit`（1.0.0 起）** | f.wallpaper | backdrop.image |
+| wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签三选（1.0.0 起 moonlit 居首，crimson/pale 随后） | **`builtin:tgcf:moonlit`（1.0.0 起）** | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
 | panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **35（1.0.0 起，用户指定；裁决 #17 定 30）** | f.panelTranslucency | tokenOverrides(bg-base + sidebar-fill 按参考皮肤增量分层，rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14/#15） |
 
 **v2.4 精简注记（Q35）**：favicon/accent/gold/bubbleColor 四字段删除。皮肤视觉身份不随之丢失——tgcf `project()` 将原 catalog 默认值（brand-primary #C3272B/#E0564A、鎏金 #C9A227/#D4AF37、气泡 #C3272B/#8E2A2F、灯笼 favicon）静态烘焙为皮肤常量；SkinEffects 契约（§3/§3a）不变。
 
-builtin 资产登记（v2.4.1 #6 起两幅，1.0.0 增至三幅）：`crimson`（花城 · 银蝶灯笼，AI 生成画作）、`pale`（谢怜 · 云海宫阙，AI 生成画作）、`moonlit`（花怜 · 月下同伞，**默认壁纸**，AI 生成画作，1.0.0 增）、`seal-favicon`（「天官赐福」印章图样 favicon + 品牌标记，WebP，仅 builtin、静态引用；1.0.0 起，取代红灯笼 SVG）。四个代码纹样与 motif select 已删除（Y10/#6）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
+builtin 资产登记（v2.4.1 #6 起两幅，1.0.0 增至三幅）：`crimson`（花城 · 银蝶灯笼，AI 生成画作）、`pale`（谢怜 · 云海宫阙，AI 生成画作）、`moonlit`（花怜 · 月下同伞（默认壁纸），出厂默认、页签居首，AI 生成画作，1.0.0 增）、`seal-favicon`（「天官赐福」印章图样 favicon + 品牌标记，WebP，仅 builtin、静态引用；1.0.0 起，取代红灯笼 SVG）。四个代码纹样与 motif select 已删除（Y10/#6）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
 
 旧皮肤：`openbmc`（bodyAttr `dshOpenbmcSkin` 不变）与 `uefi-harness`（`dshUefiHarness`）全量开放标准字段集（v2.7 经 ADR-0004 推翻 §9a 终态）；**默认投影必须与当前烘焙值逐字节等价**（派生串 ≡ 工厂烘焙串，由真实工厂测试与两皮肤契约金值钉死；两皮肤文件在 1.0.0 全程 0 diff，数值上仍 ≡ 0.6.0）。
 
@@ -360,6 +360,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **1.0.0 修订（#13 修订二轮：morph 期面板列固定基线，箱体增长改为裁切揭示）**：产品主三轮复测——回弹消失后展开仍有"轻微抖动"。壳内**元素级**逐帧采样定位真身：壳几何已单调无回跳，但 morph 期间面板列从 ~0px 被挤到全宽，**正在渐显的内容全程重排**——15% 进度帧里缩略图还是 ~20px 小圆点、40% 时长成完整 4:3 格，文本反复换行；而左列（固定 360px）从第 0 帧就纹丝不动。静止参照物旁一块持续蠕动且正在淡入的内容，即残余抖感的来源——这是宽度 morph 让内容在中间宽度反复重排的必然产物，与图库填充无关（12/24 张实测内容位移达箱体位移的 5–10 倍：箱体 14–31px/帧，内容 134–151px/帧）。修复（**裁切揭示**）：sweep 在冻结测量的同时把面板列的 settled 宽度测出（`querySelector(".dsh-skins-pz-panel")` 的 rect 宽），写入 CSS 变量 `--dsh-skins-sweep-panel-basis`，sweeping 类在**桌面宽行布局**（`@media (min-width:905px)`，堆叠列布局下 flex-basis 是高度、且堆叠面板本就无横向重排）下将面板列钉为 `flex:0 0 var(…)、不收缩`——morph 全程内容几何 ≡ 终态，箱体增长只扩展裁切窗口（壳 sweep 期 `overflow:hidden` 双轴裁切，钉宽列横向溢出被裁），动画只剩裁切窗、箱高与入场透明度三者。实测：`cT/cL/mh` 与箱体位移逐帧相等（内容刚性随动，零相对运动）、面板列宽从钉住到释放恒定。**配套踩坑**：`box-sizing` 不可继承——面板列原为 content-box，测得的 rect 宽喂给 `flex-basis` 变成内容宽（+15px padding/border），morph 期面板 722px、释出回落 707px，形成释放瞬间的 15px 尾跳；面板列补 `box-sizing:border-box` 后 rect 宽 ≡ basis 语义，尾跳归零。经典滚动条环境（非 overlay）另由 sweep 期双轴裁切兜住面板列滚动条闪现。单测 ⑪ 扩充：假面板列 rect 宽 → 断言变量写入/释放、双轴裁切；⑩ 断言随 border-box 前缀同步。
 
 **1.0.0 修订（用户裁决：面板头部收起控制 + 齿轮展开态着色）**：产品主提出面板右上角应有一个明确的收起 affordance。讨论后裁决三点：①语义为**仅收起面板**（与再点齿轮等价，弹层保留）而非"× 关闭弹层"——点空白/Esc/换肤按钮再点已覆盖关壳且零成本，× 会过度承诺"关闭一切"并与粘连外壳的关闭语义打架，真正缺口是"收面板回列表"；②视觉为**收起语义图标（«，双左箭头——与收起运动方向一致：面板右缘向左收拢折回列表；首版误用右箭头被产品主打回，字段报告『向左才是收起』）+ tooltip/aria-label「收起个性化面板」**，不用裸 ×；③顺带给齿轮加**展开态着色**（`aria-expanded=true` 时品牌色描边/底色/字色，声明在 hover 规则之后使悬停时着色仍胜）——齿轮本就是面板开关（switcher 按钮 .on 同语言），此前 `aria-expanded` 无任何视觉表达，开关关系不可读是实现缺口。实现：面板标题包进 `.dsh-skins-pz-head` 行容器（CSS 原已预留；标题保持焦点目标不变，issue #12 语义不动），右端挂 `.dsh-skins-pz-collapse` 幽灵图标按钮（复用齿轮 hover 语言，28px）；switcher 抽出 `collapsePanel(skinId)`（置空 + 焦点归还齿轮）供齿轮与 `onCollapse` prop 共用；面板无 onCollapse 时不渲染按钮（直挂场景向后兼容）。dicts 新键 `personalization.collapse`（zh 收起个性化面板 / en Collapse personalization panel）。面板旧注释"panel owns no close button"反转为"no shell-close button"——收起 ≠ 关闭。单测 ⑬ 新增（开→收全程：按钮存在/本地化标签/标题仍为焦点目标/收起后壳保留/焦点归齿轮/aria-expanded 跟随/CSS 断言）。
+
+**1.0.0 修订（用户裁决：内置画作命名与排序）**：三处界面命名调整——①openbmc 内置画作「默认壁纸」→**「左风右雷（默认壁纸）」**；②uefi-harness 内置画作「默认壁纸」→**「集成电路（默认壁纸）」**；③tgcf「花怜 · 月下同伞」加**（默认壁纸）**后缀，并**移至内置页签首位**（出厂默认居首，crimson/pale 随后，注册表 builtinAssets 键序同步镜像）。实现：openbmc/uefi 从共享键 `personalization.builtin.default` 切换为专属键 `personalization.openbmc.art` / `personalization.uefi.art`（共享键保留为面板 labelKey 缺省回退，不再被任何目录条目引用）；moonlit 键值加后缀。en 文案：Left Wind, Right Thunder / Integrated circuit / Hualian · Moonlit Umbrella（均带 (default)）。存量覆写不受影响（builtin 键 `builtin:openbmc:art` 等未变，仅显示名变化）。单测：catalog 金值更新（builtinChoices 首位 moonlit、builtinAssets 键序镜像、双 labelKey 断言）、面板键集断言增两键。
 
 ## 20. 终审记录
 
