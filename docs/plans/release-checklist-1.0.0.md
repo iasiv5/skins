@@ -12,14 +12,15 @@
 
 - [ ] `node scripts/capture-previews.mjs --skin tgcf --gate` → 输出 `GATE PASSED`
       （断言：3 个齿轮键盘可达、面板粘连展开、Esc 整壳关闭、保存→标题换装且刷新后保持、
-      恢复默认→保存→出厂标题复原、静态灯笼 favicon；截图含隐私门禁）
+      恢复默认→保存→出厂标题复原、静态印章 favicon（1.0.0 印章化）；截图含隐私门禁）
       证据：终端输出 + `docs/assets/tgcf-personalize.webp`
 - [ ] `node scripts/capture-previews.mjs --skin tgcf` 与 `--skin openbmc` 重拍全部截图
       证据：`docs/assets/{tgcf,openbmc}-{dark,light}.webp`、`*-switcher-dark.webp`
 
 ## 手工验收（每项记录观察结果）
 
-- [ ] tgcf 视觉：暗色朱红鎏金 / 亮色素白金线；两张内置画作切换正常（花城默认 / 谢怜备选，遮罩单值 30 出厂默认）
+- [ ] tgcf 视觉：暗色朱红鎏金 / 亮色素白金线；三张内置画作切换正常（月下同伞默认 / 花城、谢怜备选，遮罩单值 35 出厂默认）
+- [ ] tgcf 新会话框通透（1.0.0）：浅/深两主题下输入卡片均为玻璃态（input-major 随旋钮联动，非宿主实色），拖动通透度旋钮卡片浓淡随动
 - [ ] 自动保存流（ADR-0003）：拖动遮罩/模糊/面板透明度、改标语或换壁纸 → 界面即时生效；
       停顿约半秒自动落库，刷新页面后保持；双标签页 ~1s 内同步；面板内无保存按钮
 - [ ] 无确认弹窗（ADR-0003）：有在途修改时点空白 / 换肤 / Esc / 收面板 / 切换皮肤 →

@@ -78,10 +78,10 @@ test("the translucency sweep spans its endpoints (ruling #15 amendment)", () => 
   const floor = projectSkin(fixtureSkin(), { panelOpacity: 0 }, { assetResolver: resolver });
   assert.equal(floor.effects.backdrop.blur, 0);
   assert.equal(floor.effects.backdrop.overlayLight, "rgba(0,0,0,0.000)");
-  // P=30 (factory default since ruling #17) → scrim 3, blur 1.
+  // P=35 (factory default since 1.0.0; ruling #17 pinned 30) → scrim 4, blur 1.
   const current = projectSkin(fixtureSkin(), {}, { assetResolver: resolver });
   assert.equal(current.effects.backdrop.blur, 1);
-  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.030)");
+  assert.equal(current.effects.backdrop.overlayLight, "rgba(0,0,0,0.040)");
 });
 
 test("layer-1 field fallback keeps projection healthy with bad overrides", () => {
@@ -90,7 +90,7 @@ test("layer-1 field fallback keeps projection healthy with bad overrides", () =>
   }, { assetResolver: resolver });
   assert.equal(result.degraded, "none");
   assert.deepEqual(result.issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
-  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.030)"); // catalog default 30
+  assert.equal(result.effects.backdrop.overlayLight, "rgba(0,0,0,0.040)"); // catalog default 35
   assert.equal(result.effects.backdrop.blur, 1); // catalog default
 });
 
@@ -173,7 +173,7 @@ test("a user wallpaper that cannot resolve falls back to the default builtin", (
     assetResolver: semiResolver,
   });
   assert.equal(result.degraded, "defaults");
-  assert.equal(result.effects.backdrop.imageLight.includes("builtin://tgcf/crimson"), true);
+  assert.equal(result.effects.backdrop.imageLight.includes("builtin://tgcf/moonlit"), true, "fallback lands on the factory default builtin");
 });
 
 test("the REAL openbmc and uefi factories project their baked defaults verbatim", async () => {
@@ -317,20 +317,26 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   const resolverFor = (ref) => ({ url: `builtin://${ref.skinId}/${ref.assetKey}`, mime: "image/svg+xml" });
   const result = projectSkin(skin, {}, { assetResolver: resolverFor });
   assert.equal(result.degraded, "none");
-  // Translucency curve at the factory default P=30 → scrim 3, blur 1 (ruling #17);
+  // Translucency curve at the factory default P=35 → scrim 4, blur 1
+  // (ruling #17 pinned 30; 1.0.0 re-tunes the default to 35);
   // one alpha drives BOTH overlays.
-  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.030),rgba(255,246,234,0.030))");
-  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.030),rgba(14,7,8,0.030))");
+  assert.equal(result.effects.backdrop.overlayLight, "linear-gradient(rgba(255,246,234,0.040),rgba(255,246,234,0.040))");
+  assert.equal(result.effects.backdrop.overlayDark, "linear-gradient(rgba(14,7,8,0.040),rgba(14,7,8,0.040))");
   assert.equal(result.effects.backdrop.blur, 1);
   assert.deepEqual(result.effects.cssVariables["--dsh-tgcf-glass-blur"], { light: "1px", dark: "1px" });
   // Sidebar fill sits ABOVE the content base by the reference-skin deltas
   // (ruling #15: light +0.05, dark +0.17 — openbmc/uefi pattern).
-  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-base"], { light: "rgba(255,252,246,0.3)", dark: "rgba(24,16,16,0.3)" });
-  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-sidebar-fill"], { light: "rgba(255,252,246,0.35)", dark: "rgba(24,16,16,0.47)" });
-  assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/crimson")');
-  // Favicon is a static skin asset since the field was removed.
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-base"], { light: "rgba(255,252,246,0.35)", dark: "rgba(24,16,16,0.35)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-sidebar-fill"], { light: "rgba(255,252,246,0.4)", dark: "rgba(24,16,16,0.52)" });
+  // Composer stays glass (1.0.0 user report): the input card is base +5/+10,
+  // its embedded selector +0/+5 — never the host's solid input default.
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-input-major"], { light: "rgba(255,252,246,0.4)", dark: "rgba(24,16,16,0.45)" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-module-platform"], { light: "rgba(255,252,246,0.35)", dark: "rgba(24,16,16,0.4)" });
+  assert.equal(result.effects.backdrop.imageLight, 'url("builtin://tgcf/moonlit")', "factory default rides the third curated piece (moonlit)");
+  // Favicon is a static skin asset since the field was removed — the seal
+  // artwork (bundled WebP) since 1.0.0, no longer the SVG lantern.
   assert.equal(result.effects.favicon.href, skin.favicon);
-  assert.equal(result.effects.favicon.mime, "image/svg+xml");
+  assert.equal(result.effects.favicon.mime, "image/webp");
   // Colors are baked into the skin (the fields are gone but the identity is not).
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-primary"], { light: "#C3272B", dark: "#E0564A" });
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-text"], { light: "#C9A227", dark: "#D4AF37" });

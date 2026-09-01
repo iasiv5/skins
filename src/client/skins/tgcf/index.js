@@ -2,14 +2,17 @@
  * 「天官赐福 · 百无禁忌」— fan-made, non-official skin.
  *
  * The factory wallpaper is bundled AI-generated fan art (wallpapers.js,
- * 豆包AI origin — see §18/§19); favicon and butterfly sprite remain
- * original code-drawn SVG. The
+ * 豆包AI origin — see §18/§19); the brand mark and favicon are the product
+ * owner's 「天官赐福」 seal artwork (seal.js, 1.0.0 — retires the
+ * code-drawn lantern), while the butterfly sprite remains original
+ * code-drawn SVG. The
  * personalization contract lives in src/shared/personalization/catalog.js.
  * Effects are produced by `project()` (values → SkinEffects) and executed
  * by the generic runtime; this module never touches the DOM.
  */
 
-import { WALLPAPER_CRIMSON, WALLPAPER_PALE } from "./wallpapers.js";
+import { SEAL_MARK } from "./seal.js";
+import { WALLPAPER_CRIMSON, WALLPAPER_MOONLIT, WALLPAPER_PALE } from "./wallpapers.js";
 
 const SCOPE = "body[data-dsh-tgcf-skin]";
 
@@ -17,16 +20,6 @@ function svgUrl(svg) {
   return `data:image/svg+xml,${encodeURIComponent(svg.replace(/\s{2,}/g, " "))}`;
 }
 
-
-const FAVICON_LANTERN = svgUrl(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
-  + `<rect x="22" y="4" width="20" height="7" rx="2.5" fill="#D4AF37"/>`
-  + `<path d="M32 11 c-13 3 -15 14 -15 21 c0 8 7 14 15 14 c8 0 15 -6 15 -14 c0 -7 -2 -18 -15 -21z" fill="#C3272B"/>`
-  + `<path d="M18 22 h28 M17 32 h30 M18 42 h28" stroke="#E8B84B" stroke-width="2.5" opacity=".85"/>`
-  + `<rect x="22" y="47" width="20" height="6" rx="2.5" fill="#D4AF37"/>`
-  + `<path d="M32 53 v7" stroke="#D4AF37" stroke-width="3"/>`
-  + `</svg>`,
-);
 
 const BUTTERFLY_SPRITE = svgUrl(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
@@ -89,17 +82,19 @@ const PALETTE = {
 export function createTgcfSkin(jsxRuntime) {
   const { jsx } = jsxRuntime;
 
-  function TgcfMark({ size = 24 }) {
-    return jsx("svg", {
-      width: size, height: size, viewBox: "0 0 64 64", fill: "none",
-      xmlns: "http://www.w3.org/2000/svg", "aria-hidden": "true",
-      children: [
-        jsx("rect", { x: "24", y: "6", width: "16", height: "6", rx: "2", fill: "#D4AF37" }),
-        jsx("path", { d: "M32 12c-11 3-13 12-13 18 0 7 6 12 13 12s13-5 13-12c0-6-2-15-13-18z", fill: "#C3272B" }),
-        jsx("path", { d: "M20 22h24M19 31h26M20 40h24", stroke: "#E8B84B", strokeWidth: "2", opacity: ".85" }),
-        jsx("rect", { x: "24", y: "43", width: "16", height: "5", rx: "2", fill: "#D4AF37" }),
-        jsx("path", { d: "M32 48v8", stroke: "#D4AF37", strokeWidth: "2.5" }),
-      ],
+  function TgcfMark({ size = 24, className }) {
+    // Brand mark = the 「天官赐福」 seal artwork (1.0.0): retires the
+    // code-drawn lantern SVG. A plain img keeps the bundled WebP working in
+    // every slot that renders the mark (sidebar brand + new-session hero);
+    // alt="" + aria-hidden keep it decorative next to the brand text.
+    return jsx("img", {
+      src: SEAL_MARK,
+      alt: "",
+      width: size,
+      height: size,
+      className,
+      style: { display: "block", borderRadius: "2px" },
+      "aria-hidden": "true",
     });
   }
 
@@ -137,7 +132,8 @@ export function createTgcfSkin(jsxRuntime) {
   const builtinAssets = {
     crimson: { mime: "image/webp", url: WALLPAPER_CRIMSON },
     pale: { mime: "image/webp", url: WALLPAPER_PALE },
-    "lantern-favicon": { mime: "image/svg+xml", url: FAVICON_LANTERN },
+    moonlit: { mime: "image/webp", url: WALLPAPER_MOONLIT },
+    "seal-favicon": { mime: "image/webp", url: SEAL_MARK },
   };
 
   function project(values, assets) {
@@ -157,6 +153,22 @@ export function createTgcfSkin(jsxRuntime) {
       light: Math.min(1, Math.round((alpha + SIDEBAR_DELTA.light) * 100) / 100),
       dark: Math.min(1, Math.round((alpha + SIDEBAR_DELTA.dark) * 100) / 100),
     };
+    // Composer glass (1.0.0 user report): the new-session / conversation
+    // input card paints with --dsw-specific-input-major, which tgcf never
+    // overrode — it fell back to the host's SOLID surface (an opaque slab in
+    // both themes), and the card's embedded selector sat at a near-opaque
+    // 0.92. Mirror the reference skins' structure (openbmc/uefi): the card
+    // rides the content base with a small positive delta (theirs +5/+10),
+    // the selector with +0/+5, so the whole composer stays glass and rides
+    // the same knob. At the factory P=35 → card 0.40/0.45, selector 0.35/0.40.
+    const composerAlpha = {
+      light: Math.min(1, Math.round((alpha + 0.05) * 100) / 100),
+      dark: Math.min(1, Math.round((alpha + 0.1) * 100) / 100),
+    };
+    const selectorAlpha = {
+      light: alpha,
+      dark: Math.min(1, Math.round((alpha + 0.05) * 100) / 100),
+    };
     // Single-value scrim (Q35): one alpha drives both theme overlays; the
     // base tint stays per-theme (warm white veil / ink veil).
     const scrimAlpha = (Math.round(30 * t * t) / 100).toFixed(3);
@@ -164,8 +176,8 @@ export function createTgcfSkin(jsxRuntime) {
     const scrimLight = `linear-gradient(rgba(255,246,234,${scrimAlpha}),rgba(255,246,234,${scrimAlpha}))`;
     const scrimDark = `linear-gradient(rgba(14,7,8,${scrimAlpha}),rgba(14,7,8,${scrimAlpha}))`;
     const wallpaperUrl = assets.wallpaper?.url ?? null;
-    // The favicon field is gone (Q35): the lantern icon is a static skin asset.
-    const faviconAsset = builtinAssets["lantern-favicon"];
+    // The favicon field is gone (Q35): the seal icon is a static skin asset.
+    const faviconAsset = builtinAssets["seal-favicon"];
     return {
       bodyAttribute: "dshTgcfSkin",
       slogans: values.slogan ?? null,
@@ -194,7 +206,11 @@ export function createTgcfSkin(jsxRuntime) {
         // falling back to the host's neutral blue-gray.
         "--dsw-alias-interactive-bg-hover": { light: "rgba(195,39,43,0.08)", dark: "rgba(224,86,74,0.14)" },
         "--dsw-alias-interactive-bg-active": { light: "rgba(195,39,43,0.14)", dark: "rgba(224,86,74,0.20)" },
-        "--dsw-alias-bg-module-platform": { light: "rgba(255,252,246,0.92)", dark: "rgba(24,16,16,0.92)" },
+        "--dsw-alias-bg-module-platform": { light: panelBase(true, selectorAlpha.light), dark: panelBase(false, selectorAlpha.dark) },
+        // The composer card (new session + ongoing input) must stay glass,
+        // not the host's solid input default (1.0.0 user report; openbmc/
+        // uefi pattern: base + small per-theme delta).
+        "--dsw-specific-input-major": { light: panelBase(true, composerAlpha.light), dark: panelBase(false, composerAlpha.dark) },
         "--dsw-specific-sidebar-nav-item-hover": { light: "rgba(255,252,246,0.6)", dark: "rgba(24,16,16,0.6)" },
         "--dsw-specific-sidebar-nav-item-active": { light: "rgba(255,252,246,0.9)", dark: "rgba(24,16,16,0.9)" },
         "--dsw-specific-bubble": PALETTE.bubble,
@@ -219,8 +235,8 @@ export function createTgcfSkin(jsxRuntime) {
     bodyAttr: "dshTgcfSkin",
     Mark: TgcfMark,
     Name: TgcfName,
-    favicon: FAVICON_LANTERN,
-    faviconMime: "image/svg+xml",
+    favicon: SEAL_MARK,
+    faviconMime: "image/webp",
     title: "天官赐福",
     css: CSS,
     // Legacy fallback path (projector layer-3 safety net) stays coherent:

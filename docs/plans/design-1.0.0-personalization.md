@@ -206,13 +206,13 @@ runtime：`updateActive(values)` 热更新专用入口（不复用 select）；m
 
 | key | type×scope | 约束 | 出厂默认 | labelKey | 投影目标 |
 |---|---|---|---|---|---|
-| wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签二选（v2.4.1 #6：AI 画作取代四个代码纹样） | `builtin:tgcf:crimson` | f.wallpaper | backdrop.image |
+| wallpaper | image×single | allowedUserMime: png/jpeg/webp/gif；≤20MB；maxPixels 40MP（GIF 12MP）；builtin 页签三选（v2.4.1 #6 两幅 + 1.0.0 第三幅） | **`builtin:tgcf:moonlit`（1.0.0 起）** | f.wallpaper | backdrop.image |
 | slogan | text×locale | maxLength 40 | {zh:"百无禁忌", en:"No Taboos"} | f.slogan | slogans |
-| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **30（裁决 #17 起）** | f.panelTranslucency | tokenOverrides(bg-base + sidebar-fill 按参考皮肤增量分层，rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14/#15） |
+| panelOpacity | range×single | **0–100, step 1, unit %（裁决 #14 起）** | **35（1.0.0 起，用户指定；裁决 #17 定 30）** | f.panelTranslucency | tokenOverrides(bg-base + sidebar-fill 按参考皮肤增量分层，rgba 派生) + backdrop.scrim/blur/玻璃雾化（曲线联动，见 §7.2 裁决 #14/#15） |
 
 **v2.4 精简注记（Q35）**：favicon/accent/gold/bubbleColor 四字段删除。皮肤视觉身份不随之丢失——tgcf `project()` 将原 catalog 默认值（brand-primary #C3272B/#E0564A、鎏金 #C9A227/#D4AF37、气泡 #C3272B/#8E2A2F、灯笼 favicon）静态烘焙为皮肤常量；SkinEffects 契约（§3/§3a）不变。
 
-builtin 资产登记（v2.4.1 #6 起）：`crimson`（花城 · 银蝶灯笼，**默认壁纸**，AI 生成画作）、`pale`（谢怜 · 云海宫阙，AI 生成画作）、`lantern-favicon`（红灯笼 favicon，SVG，仅 builtin、静态引用）。四个代码纹样与 motif select 已删除（Y10/#6）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
+builtin 资产登记（v2.4.1 #6 起两幅，1.0.0 增至三幅）：`crimson`（花城 · 银蝶灯笼，AI 生成画作）、`pale`（谢怜 · 云海宫阙，AI 生成画作）、`moonlit`（花怜 · 月下同伞，**默认壁纸**，AI 生成画作，1.0.0 增）、`seal-favicon`（「天官赐福」印章图样 favicon + 品牌标记，WebP，仅 builtin、静态引用；1.0.0 起，取代红灯笼 SVG）。四个代码纹样与 motif select 已删除（Y10/#6）。所有 labelKey 与 option 文案进 dicts.js 双语键集测试。动效（呼吸/光晕/漂浮）不设字段，随皮肤 staticCss 常开，`prefers-reduced-motion` 停。
 
 旧皮肤：`openbmc`（bodyAttr `dshOpenbmcSkin` 不变）与 `uefi-harness`（`dshUefiHarness`）全量开放标准字段集（v2.7 经 ADR-0004 推翻 §9a 终态）；**默认投影必须与当前烘焙值逐字节等价**（派生串 ≡ 工厂烘焙串，由真实工厂测试与两皮肤契约金值钉死；两皮肤文件在 1.0.0 全程 0 diff，数值上仍 ≡ 0.6.0）。
 
@@ -293,7 +293,7 @@ v1/v2 条目保留。增补：掉电级 fsync durability（分层防御替代）
 
 ## 18. 商标与非关联声明（v2.4.1 修订）
 
-与《天官赐福》版权方无关联、未获授权；不含任何官方素材。**视觉构成（v2.4.1 #6 起）**：出厂壁纸为产品作者提供的 AI 生成粉丝画作（豆包AI 生成，两幅：花城/谢怜，源文件 sha256 见 `wallpapers.js` 头注）；站点图标与飘蝶装饰仍为原创代码绘制 SVG。README 双语保持非官方声明；发布前用户终审名称（中性备选「千灯 · 朱红鎏金」）。
+与《天官赐福》版权方无关联、未获授权；不含任何官方素材。**视觉构成（v2.4.1 #6 两幅，1.0.0 增至三幅）**：出厂壁纸为产品作者提供的 AI 生成粉丝画作（豆包AI 生成，三幅：花城/谢怜/花怜月下同伞，源文件 sha256 见 `wallpapers.js` 头注）；品牌标记与站点图标为产品主提供的「天官赐福」印章图样（1.0.0 起，`seal.js` 嵌入 WebP，源 sha256 见头注），飘蝶装饰仍为原创代码绘制 SVG。README 双语保持非官方声明；发布前用户终审名称（中性备选「千灯 · 朱红鎏金」）。
 
 ## 19. v2 → v2.1 变更一览
 
@@ -346,6 +346,14 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 **v2.5 修订（裁决 #16 续：浅色弹层控件色调按皮肤色系标准化）**：同一标准推广到弹层控件的交互态——①tgcf `tokenOverrides` 增补控件态常量对：`interactive-bg-hover`（朱红 0.08/0.14 亮暗，对齐 openbmc/uefi 的同结构 alphas）、`interactive-bg-active`（0.14/0.20）、`bg-module-platform`（素白 0.92/墨 0.92）、`sidebar-nav-item-hover/active`（素白 0.6/0.6 与 0.9/0.9）——换肤按钮的悬停、选中卡片底、触发器芯片不再落入宿主中性蓝灰默认。②弹层选中态描边从冻结静态 `--dsw-static-neutral-bluish-400`（蓝灰，与朱红/紫系冲突）改为 **`--dsw-alias-brand-primary`**：各皮肤选中卡片描边即各自品牌主色（tgcf 朱红 #C3272B/#E0564A、openbmc 冰蓝 #0083b0/#3ec1e8、uefi 紫 #6553d8/#a99cff、官方墨黑 #0f1115），浅深两态自动跟随。③修复齿轮按钮悬停的 `--dsh-alias-interactive-bg-hover` 前缀笔误（同 #15 的 dsh/dsw 混淆，死键导致齿轮无悬停反馈）。官方浅色系为黑白极简、本就是宿主默认，无需另调。
 
 **v2.7 增补（legacy 皮肤全面个性化轮，ADR-0004）**：正式推翻 §9a「旧皮肤仅开放 wallpaper + 默认投影与 0.6.0 逐字节等价」终态。openbmc / uefi-harness 全量开放 `slogan`（text×locale，默认=各自工厂静态字典，同源不变量测试钉死）与 `panelOpacity`（range×single，默认 55——由烘焙 bg-base 0.55 反推的校准锚点）。每皮肤内联 `project()`（tgcf 模式，字面量烘焙点表，无共享 helper）：随动 token alpha 线性 `P/100` + 固定增量（默认 P 精确回烘焙值，派生 alpha 一律 `(points/100).toFixed(2)` 两位小数）、scrim 留在 image 串内按 P 计算（不迁 overlay 通道，legacy「纱不上用户图」语义保留）、blur `24·max(0,(P−55)/45)²` 以默认点为锚二次爬坡——P>55 起壁纸 `::before` 模糊与面板霜层同步增强（`runtime.js:132-134`，tgcf 同机制），浮层族 token 固定不随旋钮。`makeLegacyProjector` 零调用者删除；兼容不变量改写为「默认投影派生串 ≡ 当前烘焙串」（真实工厂测试 + 契约金值双重钉死；两皮肤文件 1.0.0 全程 0 diff，数值上仍 ≡ 0.6.0）。升级语义：0.6.0→1.0.0 首升存储/路由/状态机零增量（state 从头创建、默认值永不落盘、零 localStorage 新键、CONFIG_VERSION 不 bump）；降级不对称（0.6.0=孤儿文件无损往返；旧 1.0.0-dev=新字段键被规范化静默剔除 revision+1）登记进发布演练。前瞻原则：官方皮肤永不入目录，未来代码级皮肤一律声明标准字段集（ADR-0004 附录内联 13 项决策清单）。
+
+**1.0.0 修订（内置画作扩充：第三幅「月下同伞」并转为出厂默认，用户 2026-09-01 指定）**：产品主提供第三幅 AI 生成粉丝画作（豆包AI，源 sha256 `650e1282…`，2048×1150 JPEG），以 `builtin:tgcf:moonlit`（花怜 · 月下同伞——花城撑红伞、谢怜递莲，月下庭院）并入内置精选，`builtinChoices` 扩为 `["crimson","pale","moonlit"]`，且 **wallpaper 出厂默认由 `crimson` 切换为 `moonlit`**。技术通道与 v2.4.1 #6 完全一致：1920px WebP q78 内嵌 data-URI（`wallpapers.js`，+111KB），零 asset loader。语义沿用「默认只流向未修改字段」：已存覆写（含 crimson/pale 选择与图库引用）不受默认切换影响。同步点：catalog builtin 登记 + 默认值、tgcf 皮肤 `builtinAssets`、dicts 双语键 `personalization.tgcf.moonlit`、catalog/projector 测试金值、§10 表与 §18 声明、发布清单。库存量迁移为零——无新字段、CONFIG_VERSION 不 bump、内置键登记即生效。
+
+**1.0.0 修订（字段文案 + 通透度默认微调，用户 2026-09-01 指定）**：①zh 字段标签去「|」分隔符——「壁纸 | Wallpaper」→「壁纸 Wallpaper」、「标语 | Slogan」→「标语 Slogan」、「通透度 | Transparency」→「通透度 Transparency」（仅 zh 键值变化，键集不变，en 本就无分隔符）；②tgcf `panelOpacity` 出厂默认 30 → **35**（曲线不动，默认点金值平移：纱 0.030→0.040、模糊 1px 不变、底色 α 0.30→0.35、侧栏亮 0.35→0.40 / 暗 0.47→0.52）。同步点：catalog 默认值、projector/smoke 金值断言、§10 表、README 双语默认值提及、发布清单。已存 panelOpacity 覆写不受影响（默认只流向未修改字段）。
+
+**1.0.0 修订（新会话框玻璃化，用户 2026-09-01 报告）**：tgcf 新会话页/会话中的输入卡片（宿主 `.…_card`，背景 token `--dsw-specific-input-major`）此前**未覆写**——落到宿主实色输入面，浅深两主题都是不透明色块；卡片内嵌模型选择器（`--dsw-alias-bg-module-platform`）又写死 0.92 近实心。修复对齐 openbmc/uefi 的玻璃结构：`input-major` = 内容底色 **+5/+10 个百分点**（亮/暗）、`module-platform` = **+0/+5**，全部随通透度旋钮联动（默认 P=35 → 卡片 0.40/0.45、选择器 0.35/0.40，素白/墨黑家族色）。同步点：tgcf `project()` tokenOverrides、真实工厂测试金值、发布清单。
+
+**1.0.0 修订（印章化：品牌标记 + 站点图标，用户 2026-09-01 指定）**：产品主提供「天官赐福」印章图样（源 sha256 `09d911ac…`，443×422 PNG），裁边为 380×380 方章后转 128px WebP q78（+6KB），内嵌 `src/client/skins/tgcf/seal.js`（embed-in-JS，零 asset loader，同壁纸通道）。①左上角品牌标记：`TgcfMark` 由代码绘制灯笼 SVG 改为渲染印章 `<img>`（`{size, className}` 契约不变，alt="" + aria-hidden 保持装饰语义，2px 圆角）；②站点图标：builtin 资产 `lantern-favicon`（SVG）整体改名 **`seal-favicon`**（image/webp）——改名而非新增，因该键仅静态引用、无存量覆写可迁移；`skin.favicon/faviconMime` 与 `project()` 静态 favicon 同步。飘蝶装饰仍为原创 SVG。同步点：catalog builtin 登记、皮肤 `builtinAssets`、真实工厂测试（favicon mime 金值 + builtinAssets 键序）、发布清单。§18 视觉构成声明同步改写（印章为产品主提供素材，非官方物料）。
 
 ## 20. 终审记录
 

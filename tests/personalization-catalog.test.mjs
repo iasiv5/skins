@@ -35,9 +35,9 @@ test("asset id pattern accepts hyphenless 32-hex and rejects uuid/other shapes",
 });
 
 test("builtin ref pattern parses skin and asset key", () => {
-  const match = BUILTIN_REF_PATTERN.exec("builtin:tgcf:lantern-favicon");
+  const match = BUILTIN_REF_PATTERN.exec("builtin:tgcf:seal-favicon");
   assert.equal(match?.[1], "tgcf");
-  assert.equal(match?.[2], "lantern-favicon");
+  assert.equal(match?.[2], "seal-favicon");
   assert.equal(BUILTIN_REF_PATTERN.test("builtin:tgcf:"), false);
   assert.equal(BUILTIN_REF_PATTERN.test("builtin::lanterns"), false);
 });
@@ -127,7 +127,9 @@ test("mergeValues: defaults fill untouched fields, overrides win when valid", ()
   assert.deepEqual(issues, []);
   assert.deepEqual(values.slogan, { zh: "改", en: "Changed" });
   assert.equal(values.panelOpacity, 60);
-  assert.equal(values.wallpaper, "builtin:tgcf:crimson");
+  // Factory wallpaper rides the third curated piece (moonlit) since the
+  // 1.0.0 addition; the default only reaches fields without an override.
+  assert.equal(values.wallpaper, "builtin:tgcf:moonlit");
   // Retired blur/scrim keys never appear in merged values (ruling #14).
   assert.equal("blur" in values, false);
   assert.equal("scrim" in values, false);
@@ -139,7 +141,7 @@ test("mergeValues: layer-1 fallback swaps invalid overrides for defaults and rep
     blur: 5, // retired field: silently ignored, NOT an issue (ruling #14)
     unknownFutureKey: { any: "shape" },
   });
-  assert.equal(values.panelOpacity, 30);
+  assert.equal(values.panelOpacity, 35);
   assert.deepEqual(issues.map((issue) => issue.key).sort(), ["panelOpacity"]);
   // Unknown keys are ignored by projection (the store normalizes them away at load).
   assert.equal("unknownFutureKey" in values, false);
@@ -153,7 +155,7 @@ test("mergeValues: image overrides validate against trusted metadata when provid
   assert.deepEqual(ok.issues, []);
 
   const missing = mergeValues("tgcf", { wallpaper: USER_ID }, () => null);
-  assert.equal(missing.values.wallpaper, "builtin:tgcf:crimson");
+  assert.equal(missing.values.wallpaper, "builtin:tgcf:moonlit");
   assert.deepEqual(missing.issues, [{ key: "wallpaper", code: "MISSING_ASSET" }]);
 });
 
@@ -165,11 +167,18 @@ test("accessors expose schema, fields, asset fields and defaults", () => {
   const schema = getSkinSchema("tgcf");
   assert.equal(schema.fields.length, 3);
   assert.deepEqual(schema.fields.map((field) => field.key), ["wallpaper", "slogan", "panelOpacity"]);
+  // Three curated pieces since the 1.0.0 addition; moonlit is both the third
+  // choice and the factory default.
+  const wallpaperField = getField("tgcf", "wallpaper");
+  assert.deepEqual(wallpaperField.builtinChoices, ["crimson", "pale", "moonlit"]);
+  assert.equal(wallpaperField.default, "builtin:tgcf:moonlit");
+  assert.deepEqual(Object.keys(schema.builtinAssets), ["crimson", "pale", "moonlit", "seal-favicon"]);
   assert.equal(getField("tgcf", "blur"), null, "blur field retired by ruling #14");
-  assert.equal(getField("tgcf", "panelOpacity").default, 30);
+  assert.equal(getField("tgcf", "panelOpacity").default, 35);
   assert.deepEqual(listAssetFields("tgcf").map((field) => field.key), ["wallpaper"]);
   assert.deepEqual(listAssetFields("openbmc").map((field) => field.key), ["wallpaper"]);
   assert.equal(defaultsFor("tgcf").titleBrand, undefined);
+  assert.equal(defaultsFor("tgcf").wallpaper, "builtin:tgcf:moonlit");
   assert.equal(defaultsFor("uefi-harness").wallpaper, "builtin:uefi-harness:art");
 });
 

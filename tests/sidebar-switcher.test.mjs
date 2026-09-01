@@ -150,6 +150,9 @@ function makeHarness(viewportHeight = 900) {
   );
   const switcherButton = () => flatten(tree).find((n) => n.type === "button" && String(n.props.className).includes("dsh-skins-switcher-btn"));
   const panelColumn = () => inShell().find((n) => n.props?.className === "dsh-skins-pz-panel") ?? null;
+  const collapseButton = () => inShell().find(
+    (n) => n.type === "button" && String(n.props.className).includes("dsh-skins-pz-collapse"),
+  ) ?? null;
   const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "通透度 | Transparency");
   const heading = () => inShell().find((n) => n.props?.role === "heading");
 
@@ -161,7 +164,7 @@ function makeHarness(viewportHeight = 900) {
     attachFocusRecorders();
   };
 
-  return { dom, configClient, tree: () => tree, render, shell, gearButton, cardButton, switcherButton, panelColumn, translucencyInput, heading, openShell, attachFocusRecorders, getActive: () => active,
+  return { dom, configClient, tree: () => tree, render, shell, gearButton, cardButton, switcherButton, panelColumn, collapseButton, translucencyInput, heading, openShell, attachFocusRecorders, getActive: () => active,
     cssText: () => dom.created.map((el) => el.textContent ?? "").join("\n") };
 }
 
@@ -317,7 +320,7 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
   const css = h.cssText();
   assert.ok(css.includes(".dsh-skins-wide .dsh-skins-pz-panel{overflow-y:auto"),
     "wide mode: the panel column owns its scroll region");
-  assert.ok(css.includes(".dsh-skins-pz-panel{flex:0 1 700px"),
+  assert.ok(css.includes(".dsh-skins-pz-panel{box-sizing:border-box;flex:0 1 700px"),
     "panel column is shrinkable — the wide shell can never overflow horizontally");
   assert.ok(css.includes("width:min(1105px"),
     "wide shell sized for a 6-per-row wallpaper grid (v2.4.1 #3)");
@@ -341,6 +344,12 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
     "the list column is 360px in BOTH narrow and wide shells (no menu resize on gear click)");
   assert.ok(css.includes("transition:width .2s ease-out"),
     "the shell width animates so docking looks smooth");
+  assert.ok(css.includes(".dsh-skins-sweeping{overflow:hidden}"),
+    "the morph clips the whole shell (the held panel column overflows horizontally)");
+  assert.ok(css.includes(".dsh-skins-sweeping .dsh-skins-pz-panel{overflow-y:hidden}"),
+    "the morph clips the panel column's scrollbar for the ~200ms the box is pinned (issue #13 rev.)");
+  assert.ok(css.includes("@media (min-width:905px){.dsh-skins-sweeping.dsh-skins-wide .dsh-skins-pz-panel{flex:0 0 var(--dsh-skins-sweep-panel-basis,700px)}}"),
+    "the panel column is held at its settled width during the morph (clip-reveal, desktop wide row only)");
   assert.ok(css.includes("min-width:0;width:360px;flex:none"),
     "list column width is fixed in the BASE rule — the instant wide-class flip on collapse cannot resize it");
   assert.ok(css.includes(".dsh-skins-pop{transition:none}"),
@@ -359,52 +368,128 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
   assert.equal(tiny.shell().props.style.maxHeight, 220, "very short viewports keep a usable floor, never a negative/zero clamp");
 });
 
-test("⑪ gear toggle sweeps the shell height on the width's beat (issue #13)", () => {
-  // Expand: the box jumped 493→628 in one frame pre-fix; the sweep pins the
-  // old height and transitions to the post-commit clamp ceiling instead.
-  const style = {};
+test("⑪ gear toggle sweeps the shell box on one beat, measured at the settled width (issue #13 rev.)", () => {
+  // Expand regression: the first cut read its height target off the width
+  // transition's progress-0 layout, where the panel column is squeezed to
+  // ~0px and the content extent is inflated (5000px here). It must measure
+  // at the settled width (1105px) instead, then sweep BOTH axes to the
+  // final box — otherwise the pin releases with a one-frame drop from the
+  // inflated target (the residual open-direction bounce, sized differently
+  // at 0/6/12/18+ gallery images).
   let onTransitionEnd = null;
-  const shell = {
-    style,
-    scrollHeight: 900, // unclamped panel content extent
-    offsetHeight: 493, // consumed by the forced reflow between pin and target
-    getBoundingClientRect: () => ({ height: 628 }), // post-commit clamped box
-    addEventListener: (kind, fn) => { if (kind === "transitionend") onTransitionEnd = fn; },
-    removeEventListener: () => {},
+  const makeShell = ({ width, rectHeight, extentByWidth, panelWidth = null }) => {
+    const shell = {
+      currentWidth: width, // settled layout: the frozen class flip already applied
+      rectHeight,
+      extentByWidth,
+      style: {
+        setProperty(name, value) { this[name] = value; },
+        removeProperty(name) { delete this[name]; },
+      },
+      classlist: [],
+      offsetHeight: 493, // consumed by the forced reflow between pins and release
+      getBoundingClientRect: () => ({ width: shell.currentWidth, height: shell.rectHeight }),
+      get scrollHeight() { return shell.extentByWidth[shell.currentWidth]; },
+      addEventListener: (kind, fn) => { if (kind === "transitionend") onTransitionEnd = fn; },
+      removeEventListener: () => {},
+      classList: {
+        add: (name) => shell.classlist.push(name),
+        remove: (name) => { const at = shell.classlist.indexOf(name); if (at >= 0) shell.classlist.splice(at, 1); },
+      },
+      querySelector: panelWidth === null ? undefined
+        : (selector) => (selector === ".dsh-skins-pz-panel"
+          ? { getBoundingClientRect: () => ({ width: panelWidth }) }
+          : null),
+    };
+    return shell;
   };
-  const finish = sweepShellHeight(shell, { from: 493, maxHeight: 628 });
-  assert.equal(style.height, "628px", "sweeps toward the clamped target, not the raw content height");
-  assert.equal(style.overflowY, "hidden", "no transient scrollbar while the box is pinned below its content");
-  assert.ok(style.transition.includes("height 200ms ease-out"), "height rides the same beat as the width");
-  assert.ok(style.transition.includes("width 200ms ease-out"),
+
+  const expand = makeShell({ width: 1105, rectHeight: 900, extentByWidth: { 1105: 900, 390: 5000 }, panelWidth: 707 });
+  const finish = sweepShellHeight(expand, { from: 493, fromWidth: 390, maxHeight: 1000 });
+  assert.equal(expand.style.height, "900px",
+    "target is the settled-width content extent, NOT the progress-0 squashed extent clamped (1000px)");
+  assert.equal(expand.style.width, "1105px", "width is released to the settled box on the same beat");
+  assert.equal(expand.style.overflow, "hidden",
+    "both axes clip during the sweep — the held panel column overflows horizontally in the reveal");
+  assert.equal(expand.style["--dsh-skins-sweep-panel-basis"], "707px",
+    "the panel column is held at its settled width so fading content never reflows (clip-reveal)");
+  assert.ok(expand.classlist.includes("dsh-skins-sweeping"), "the sweep clips scrollbars mid-morph");
+  assert.ok(expand.style.transition.includes("height 200ms ease-out"), "height rides the same beat as the width");
+  assert.ok(expand.style.transition.includes("width 200ms ease-out"),
     "inline transition restates width — an inline transition replaces the stylesheet's width-only rule");
   onTransitionEnd({ propertyName: "height" });
-  assert.equal(style.height, "", "pin released after the sweep — auto height resolves to the target");
-  assert.equal(style.transition, "");
+  assert.equal(expand.style.height, "", "pin released after the sweep — auto height resolves to the target");
+  assert.equal(expand.style.width, "");
+  assert.equal(expand.style.transition, "");
+  assert.equal(expand.style.overflow, "");
+  assert.equal(expand.style["--dsh-skins-sweep-panel-basis"], undefined, "the panel-basis hold is released with the pins");
+  assert.ok(!expand.classlist.includes("dsh-skins-sweeping"), "the sweep clip is released with the pins");
   finish(); // idempotent double-release
 
-  // Collapse: 628 → 493 sweeps down the same way.
-  const down = { style: {}, scrollHeight: 493, getBoundingClientRect: () => ({ height: 493 }), offsetHeight: 628 };
-  sweepShellHeight(down, { from: 628, maxHeight: 628 });
+  // Collapse: 724 → 493 sweeps down while the width rides back 1105 → 390.
+  const down = makeShell({ width: 390, rectHeight: 493, extentByWidth: { 390: 493 } });
+  down.offsetHeight = 724;
+  sweepShellHeight(down, { from: 724, fromWidth: 1105, maxHeight: 728 });
   assert.equal(down.style.height, "493px", "collapse sweeps down to the list-column height");
+  assert.equal(down.style.width, "390px", "collapse re-animates the width from the pre-toggle box");
+  assert.equal(down.style["--dsh-skins-sweep-panel-basis"], undefined,
+    "no panel child (already unmounted) → no basis hold, and no crash on the missing querySelector");
+  assert.deepEqual(down.classlist, ["dsh-skins-sweeping"]);
 });
 
-test("⑫ height sweep no-ops where a sweep would be wrong (issue #13)", () => {
+test("⑫ height sweep no-ops where a sweep would be wrong — and never leaks the measurement freeze (issue #13 rev.)", () => {
   const style = {};
-  const shell = { style, scrollHeight: 0, getBoundingClientRect: () => ({ height: 0 }) };
-  assert.equal(typeof sweepShellHeight(undefined, { from: 100, maxHeight: 600 }), "function", "always returns a cleanup");
+  const shell = {
+    style, currentWidth: 500, rectHeight: 400, extentByWidth: { 500: 400 },
+    getBoundingClientRect: () => ({ width: shell.currentWidth, height: shell.rectHeight }),
+    get scrollHeight() { return shell.extentByWidth[shell.currentWidth]; },
+  };
+  assert.equal(typeof sweepShellHeight(undefined, { from: 100, fromWidth: 390, maxHeight: 600 }), "function", "always returns a cleanup");
   assert.deepEqual(style, {}, "no shell → nothing pinned");
-  assert.equal(typeof sweepShellHeight(shell, { from: null, maxHeight: 600 }), "function");
-  assert.deepEqual(style, {}, "first shell open (no pre-toggle height) → nothing pinned");
-  sweepShellHeight(shell, { from: 0, maxHeight: 600 });
-  assert.deepEqual(style, {}, "target equals current → nothing to animate, nothing pinned");
+  assert.equal(typeof sweepShellHeight(shell, { from: null, fromWidth: 390, maxHeight: 600 }), "function");
+  assert.deepEqual(style, {}, "first shell open (no pre-toggle box) → nothing pinned");
+  sweepShellHeight(shell, { from: 400, fromWidth: 500, maxHeight: 600 });
+  assert.deepEqual(style, {},
+    "target equals current and width is unchanged → nothing to animate; the transition:none freeze must be undone, not leaked");
   const savedMatchMedia = globalThis.window.matchMedia;
   globalThis.window.matchMedia = () => ({ matches: true });
   try {
-    sweepShellHeight({ ...shell, scrollHeight: 900, getBoundingClientRect: () => ({ height: 628 }) }, { from: 493, maxHeight: 628 });
-    assert.deepEqual(style, {}, "reduced motion → instant layout, never a sweep");
+    sweepShellHeight(
+      { ...shell, extentByWidth: { 500: 4000 }, style },
+      { from: 400, fromWidth: 500, maxHeight: 600 },
+    );
+    assert.deepEqual(style, {}, "reduced motion → instant layout, never a sweep, never a freeze");
   } finally {
     if (savedMatchMedia === undefined) delete globalThis.window.matchMedia;
     else globalThis.window.matchMedia = savedMatchMedia;
   }
+});
+
+test("⑬ panel header collapses the panel back to the skin list (v1.0.0 ruling)", async () => {
+  const h = makeHarness();
+  await h.openShell();
+  h.gearButton("tgcf").props.onClick();
+  await tick();
+  h.attachFocusRecorders();
+  assert.notEqual(h.panelColumn(), null, "panel open");
+  assert.equal(h.gearButton("tgcf").props["aria-expanded"], true, "the gear reports its expanded state");
+  const heading = h.heading();
+  assert.equal(heading.props["aria-level"], 2, "the heading stays the header's focus target");
+  const collapse = h.collapseButton();
+  assert.notEqual(collapse, null, "the panel header hosts a collapse control");
+  assert.equal(collapse.props["aria-label"], "收起个性化面板", "localized collapse label");
+  assert.equal(collapse.props.title, "收起个性化面板", "tooltip teaches the affordance");
+
+  collapse.props.onClick();
+  await tick();
+  assert.equal(h.panelColumn(), null, "panel collapsed");
+  assert.notEqual(h.shell(), null, "the shell itself stays open — collapse ≠ dismiss");
+  assert.ok(h.dom.focused.includes("tgcf-gear"), "focus returned to the gear that opened the panel");
+  assert.equal(h.gearButton("tgcf").props["aria-expanded"], false, "gear state follows the panel");
+
+  const css = h.cssText();
+  assert.ok(css.includes('.dsh-skins-pz-gear[aria-expanded="true"]{opacity:1;border-color:var(--dsw-alias-brand-primary)'),
+    "the gear shows its expanded state in the brand language (ruling: toggle legibility)");
+  assert.ok(css.includes(".dsh-skins-pz-collapse{"),
+    "the collapse control is styled in the gear's ghost language");
 });
