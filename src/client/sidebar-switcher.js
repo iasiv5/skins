@@ -186,7 +186,10 @@ const CSS = [
   '.dsh-skins-pz-gear[aria-expanded="true"]{opacity:1;border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-module-platform)}',
   // Panel header collapse control (v1.0.0 ruling): ghost icon button in the
   // gear's visual language; collapses the PANEL only, never the shell.
-  '.dsh-skins-pz-collapse{flex:none;align-self:center;width:28px;height:28px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
+  // margin-left:auto keeps it alone at the header's far right — the reset
+  // control stays by the title on the left, separated by the flexible gap,
+  // so aiming for « cannot mis-fire a destructive reset.
+  '.dsh-skins-pz-collapse{flex:none;align-self:center;margin-left:auto;width:28px;height:28px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
   '.dsh-skins-pz-collapse:hover,.dsh-skins-pz-collapse:focus-visible{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover)}',
   '.dsh-skins-pz-collapse svg{width:14px;height:14px}',
   '.dsh-skins-pz-gear svg{width:16px;height:16px}',
@@ -211,7 +214,11 @@ const CSS = [
   '@media (max-width:904px){.dsh-skins-pop.dsh-skins-wide{flex-direction:column;width:min(390px,calc(100vw - 24px))}.dsh-skins-pz-panel{flex-basis:auto;padding-left:0;border-left:0;border-top:1px solid var(--dsw-alias-border-l2);padding-top:12px;transform:translateY(12px)}.dsh-skins-pop.dsh-skins-wide .dsh-skins-pz-panel{overflow-y:visible}}',
   '.dsh-skins-pz{display:flex;flex-direction:column;gap:10px}',
   '.dsh-skins-pz-head{display:flex;align-items:center;gap:8px}',
-  '.dsh-skins-pz-head .dsh-skins-pop-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none}',
+  // Title does NOT grow (flex:0 1 auto): the reset control must sit right
+  // after the title text on the header's LEFT side (v1.0.0 ruling) — a
+  // growing title would push it to the right end, adjacent to the collapse
+  // chevron, and aiming for « could mis-fire a destructive reset.
+  '.dsh-skins-pz-head .dsh-skins-pop-title{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;outline:none}',
   '.dsh-skins-pz-row{display:flex;flex-direction:column;gap:6px}',
   '.dsh-skins-pz-label{font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);font-weight:500}',
   '.dsh-skins-pz-fields{display:flex;flex-direction:column;gap:6px}',

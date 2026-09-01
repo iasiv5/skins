@@ -12,10 +12,16 @@
  *   - 恢复默认 resets every field to factory defaults and flushes at once;
  *   - the wallpaper section merges built-in choices and the user library in
  *     one grid; library add/remove is immediate (asset path, like all writes);
- *   - the header row hosts a collapse control (v1.0.0 ruling) that folds the
- *     panel back into the skin list — it never closes the shell itself, and
- *     focus returns to the gear that opened it (the switcher owns that move);
- *   - the panel owns no shell-close button and no confirmation flows.
+ *   - the header row hosts the reset control (only while the skin has
+ *     overrides) and the collapse control (v1.0.0 rulings) at its right end;
+ *     the reset folds fields back to factory defaults with a confirm, the
+ *     collapse folds the panel back into the skin list — it never closes the
+ *     shell itself, and focus returns to the gear that opened it (the
+ *     switcher owns that move);
+ *   - the footer strip is transient status only (recovery / loading /
+ *     offline / readonly / save-failure), rendered just while non-empty, so
+ *     the panel's resting height never depends on transient state;
+ *   - the panel hosts no shell-close button and no save/dirty confirms.
  */
 
 import {
@@ -339,7 +345,12 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
       }
     });
 
-    // Footer action bar (Q50): status cluster left, actions right, always in view.
+    // Footer STATUS bar (Q50, v1.0.0 height-consistency ruling): transient
+    // status strips only, rendered just while there is something to say. The
+    // reset control used to live here and grew the panel by one button the
+    // moment a skin had any override — panel heights then differed between
+    // modified and pristine skins (and when re-targeting between them). It
+    // now lives in the header row, whose height is fixed.
     const statusCluster = [];
     if (state.mode === "recovery") {
       statusCluster.push(jsx("div", { key: "recovery", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
@@ -383,15 +394,35 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
 
     return jsx("div", { className: "dsh-skins-pz", children: [
       // Header row (`.dsh-skins-pz-head`): the heading stays the focus
-      // target (issue #12); the collapse control sits at its right end so
-      // folding the panel back is discoverable where the user is looking —
-      // the gear that opened it is a full column away (user ruling).
+      // target (issue #12); the reset and collapse controls pack at its
+      // right end so both are discoverable where the user is looking —
+      // the gear that opened it is a full column away (user ruling). The
+      // reset appears only while the skin has overrides, and its appearing
+      // can no longer change the panel's height (v1.0.0 ruling).
       jsx("div", { className: "dsh-skins-pz-head", children: [
         jsx("div", {
           ref: headerRef, className: "dsh-skins-pop-title",
           tabIndex: -1, role: "heading", "aria-level": 2,
           children: `${tr("personalization.title")} · ${labelFor(skinId)}`,
         }),
+        hasAnyOverride ? jsx("button", {
+          type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-danger",
+          disabled: writesBlocked,
+          onClick: () => {
+            // Destructive + immediate (auto-save, ADR-0003) → confirm first,
+            // listing the NON-default fields the reset will visibly change.
+            const affected = schema.fields
+              .filter((field) => overrides[field.key] !== undefined)
+              .map((field) => tr(field.labelKey));
+            const confirmed = window.confirm(tr("personalization.resetConfirm", {
+              fields: affected.length > 0 ? affected.join(tr("personalization.resetJoin")) : "—",
+            }));
+            if (!confirmed) return;
+            for (const field of schema.fields) configClient.previewReset(skinId, field.key);
+            void configClient.flushNow();
+          },
+          children: tr("personalization.reset"),
+        }) : null,
         onCollapse ? jsx("button", {
           type: "button",
           className: "dsh-skins-pz-collapse",
@@ -402,29 +433,9 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
         }) : null,
       ] }),
       ...fieldRows,
-      jsx("div", { className: "dsh-skins-pz-actions", children: [
+      statusCluster.length > 0 ? jsx("div", { className: "dsh-skins-pz-actions", children:
         jsx("div", { className: "dsh-skins-pz-cluster dsh-skins-pz-cluster-status", children: statusCluster }),
-        jsx("div", { className: "dsh-skins-pz-cluster", children: [
-          hasAnyOverride ? jsx("button", {
-            type: "button", className: "dsh-skins-pz-btn dsh-skins-pz-danger",
-            disabled: writesBlocked,
-            onClick: () => {
-              // Destructive + immediate (auto-save, ADR-0003) → confirm first,
-              // listing the NON-default fields the reset will visibly change.
-              const affected = schema.fields
-                .filter((field) => overrides[field.key] !== undefined)
-                .map((field) => tr(field.labelKey));
-              const confirmed = window.confirm(tr("personalization.resetConfirm", {
-                fields: affected.length > 0 ? affected.join(tr("personalization.resetJoin")) : "—",
-              }));
-              if (!confirmed) return;
-              for (const field of schema.fields) configClient.previewReset(skinId, field.key);
-              void configClient.flushNow();
-            },
-            children: tr("personalization.reset"),
-          }) : null,
-        ] }),
-      ] }),
+      }) : null,
     ] });
   };
 }
