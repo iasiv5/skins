@@ -66,6 +66,26 @@ function setOverride(store, skinId, key, value) {
   return store.applyOperations({ operations: [{ op: "set", skinId, key, value }] });
 }
 
+test("load-time normalization drops overrides equal to the factory default (v1.0.0 ruling)", async () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, "state.json"), JSON.stringify({
+    configVersion: 1,
+    revision: 41,
+    skins: { tgcf: {
+      wallpaper: "builtin:tgcf:moonlit", // equals the factory default → dropped
+      slogan: { zh: "自定标语", en: "custom" }, // differs → kept
+    } },
+    library: {},
+  }));
+  const store = makeStore(dir);
+  assert.equal(store.snapshot().mode, "normal", "normal path, not recovery"); // lazy load: snapshot triggers load + normalize
+  const state = JSON.parse(readFileSync(join(dir, "state.json"), "utf8"));
+  assert.deepEqual(state.skins.tgcf, { slogan: { zh: "自定标语", en: "custom" } },
+    "default-equal override removed, real override kept");
+  assert.equal(state.revision, 42, "the removal bumps the revision once");
+  assert.equal(store.snapshot().mode, "normal", "normal path, not recovery");
+});
+
 test("first install on an empty directory creates initial state", async () => {
   const store = makeStore(tempDir());
   const snapshot = store.snapshot();

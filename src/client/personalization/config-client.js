@@ -29,6 +29,8 @@
  *     same-status refetches, whose silent swaps previously starved the UI.
  */
 
+import { defaultsFor } from "../../shared/personalization/catalog.js";
+
 const CHANNEL = "dsh-skins";
 const FETCH_TIMEOUT_MS = 3000;
 
@@ -255,7 +257,25 @@ export function createConfigClient(options = {}) {
 
   /** Record an unsaved edit: projects locally, persists nothing (ADR-0001). */
   function preview(skinId, key, value) {
-    previews.set(`${skinId} ${key}`, value);
+    // A value equal to the field's factory default is NOT an override
+    // (v1.0.0 ruling — field report: clicking the default wallpaper thumb
+    // made 恢复默认 appear and persisted a default-equal entry):
+    //   pristine field  + default value → plain no-op (it already shows it);
+    //   modified field  + default value → arm a delete op ("back to factory
+    //                                     for this field");
+    //   identical re-click on the effective value → idempotent no-op.
+    // The client snapshot holds overrides only, so "pristine" means the key
+    // is absent from both the stored section and the preview layer.
+    const composite = `${skinId} ${key}`;
+    const storedOverride = snapshot.skins[skinId]?.[key];
+    const previewed = previews.get(composite);
+    if (value === defaultsFor(skinId)[key]) {
+      if (storedOverride === undefined && previewed === undefined) return;
+      if (previewed === null) return; // delete op already armed
+      return previewReset(skinId, key);
+    }
+    if (effectiveOverrides(skinId)[key] === value) return;
+    previews.set(composite, value);
     lastFlushError = null; // a fresh edit always clears the failure strip
     scheduleFlush();
     emit();

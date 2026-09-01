@@ -363,6 +363,8 @@ R1 UUID 去连字符统一；R2 SkinEffects 冻结+分层裁决+`dshTgcfSkin`+ti
 
 **1.0.0 修订（用户裁决：内置画作命名与排序）**：三处界面命名调整——①openbmc 内置画作「默认壁纸」→**「左风右雷（默认壁纸）」**；②uefi-harness 内置画作「默认壁纸」→**「集成电路（默认壁纸）」**；③tgcf「花怜 · 月下同伞」加**（默认壁纸）**后缀，并**移至内置页签首位**（出厂默认居首，crimson/pale 随后，注册表 builtinAssets 键序同步镜像）。实现：openbmc/uefi 从共享键 `personalization.builtin.default` 切换为专属键 `personalization.openbmc.art` / `personalization.uefi.art`（共享键保留为面板 labelKey 缺省回退，不再被任何目录条目引用）；moonlit 键值加后缀。en 文案：Left Wind, Right Thunder / Integrated circuit / Hualian · Moonlit Umbrella（均带 (default)）。存量覆写不受影响（builtin 键 `builtin:openbmc:art` 等未变，仅显示名变化）。单测：catalog 金值更新（builtinChoices 首位 moonlit、builtinAssets 键序镜像、双 labelKey 断言）、面板键集断言增两键。
 
+**1.0.0 修订（用户裁决：等于出厂默认的值不是覆写——恢复默认误现修复）**：产品主实测 openbmc 面板点击「左风右雷」（本就是出厂默认）后【恢复默认】出现，质疑其合理性。归因：`configClient.preview()` 无条件记录预写——点击默认壁纸会武装一条**值等于出厂默认的覆写**，`hasAnyOverride` 随之为真；更糟的是 400ms 防抖会把这条无操作覆写 **PATCH 持久化**（实测存储里已有一条：`tgcf.wallpaper = builtin:tgcf:moonlit` = 默认值，致 tgcf 面板的恢复默认常驻）。语义裁定：**覆写 = 偏离出厂默认**——等于默认的值不是覆写。三层修复：①`preview()` 值等于出厂默认时改走 `previewReset`（武装 delete，"该字段回到默认"）；字段 pristine（存储与预写层都无该键）时整次点击为 no-op；同值重复点击幂等；②store 载入规范化（§5.5）剔除"值等于出厂默认"的存量覆写（对生效值无损，且该字段恢复跟随未来默认变更），修订号随实际剔除一次性 +1——旧存储的自愈发生在宿主下次启动加载时；③面板恢复默认可见性（hasAnyOverride）无需再过滤——①②保证覆写集不再含默认等值条目。取舍说明：显式点击默认值不再"钉住"该值对抗未来默认变更（点击默认 = 回归跟随），1.0.0 未发布无存量用户，语义更符合直觉。单测：client 三例（pristine 默认点击零预写零 PATCH、modified 默认点击武装 delete、同值重点击幂等）、store 载入规范化一例（默认等值剔除 + 真实覆写保留 + 修订号 +1）。
+
 ## 20. 终审记录
 
 Q1–Q34（产品）→ v1 → v2 → v2.1 → v2.2（三轮差异复核）→ v2.3（实现评审修订：backdrop 接口形状 §3a、§9a 获批）→ **v2.4（精简轮：Q35–Q53 产品裁决 + ADR-0001/0002 + 计划三轮评审放行）**。实现评审 13 红项、N1/N2、N3 全部闭合；精简轮按 T0–T8 交付，每 commit check 绿色，活 GUI gate 8/8 通过。

@@ -115,6 +115,55 @@ test("unsupported configVersion becomes read-only", async () => {
   client.dispose();
 });
 
+test("clicking the factory-default value on a pristine skin is a no-op (v1.0.0 ruling)", async () => {
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") return jsonResponse(200, { revision: 8 });
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  // tgcf wallpaper factory default is builtin:tgcf:moonlit
+  client.preview("tgcf", "wallpaper", "builtin:tgcf:moonlit");
+  assert.deepEqual(client.effectiveOverrides("tgcf"), {}, "no override armed by a default click");
+  assert.equal(client.getState().dirtyCount, 0, "nothing marked dirty");
+  const result = await client.flushNow();
+  assert.deepEqual(result, { flushed: 0 });
+  assert.equal(fetchImpl.calls.filter((c) => c.init.method === "PATCH").length, 0, "no PATCH issued");
+  client.dispose();
+});
+
+test("on a modified field, clicking the default value arms a delete op (v1.0.0 ruling)", async () => {
+  const patches = [];
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patches.push(JSON.parse(init.body));
+      return jsonResponse(200, { revision: 8 });
+    }
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "wallpaper", "builtin:tgcf:crimson"); // real override
+  client.preview("tgcf", "wallpaper", "builtin:tgcf:moonlit"); // back to factory → delete
+  const result = await client.flushNow();
+  assert.deepEqual(result, { flushed: 1 });
+  assert.deepEqual(patches[0].operations, [{ op: "delete", skinId: "tgcf", key: "wallpaper" }]);
+  client.dispose();
+});
+
+test("re-clicking the effective value is idempotent and does not re-arm a flush", async () => {
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") return jsonResponse(200, { revision: 8 });
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "wallpaper", "builtin:tgcf:crimson");
+  client.preview("tgcf", "wallpaper", "builtin:tgcf:crimson");
+  assert.equal(client.getState().dirtyCount, 1, "one preview entry");
+  client.dispose();
+});
+
 test("previews gate writes until flushed; effective overrides layer previews over the snapshot", async () => {
   const patches = [];
   const fetchImpl = makeFetch((index, url, init) => {

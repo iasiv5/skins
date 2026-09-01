@@ -46,6 +46,7 @@ import {
   ASSET_ID_PATTERN,
   ASSET_ID_PREFIX,
   CONFIG_VERSION,
+  defaultsFor,
   GIF_MAX_PIXELS,
   GLOBAL_MAX_BYTES,
   GLOBAL_MAX_PIXELS,
@@ -334,8 +335,18 @@ export function createPersonalizationStore(options = {}) {
         continue;
       }
       const section = state.skins[skinId];
+      const defaults = defaultsFor(skinId);
       for (const key of Object.keys(section)) {
         if (!validateOverride(skinId, key, section[key], provider).ok) {
+          delete section[key];
+          removed = true;
+          continue;
+        }
+        // A stored value equal to the field's factory default is not an
+        // override (v1.0.0 ruling): older builds could persist one via a
+        // default-thumbnail click. Dropping it is lossless for the effective
+        // value and lets the field follow future default changes again.
+        if (section[key] === defaults[key]) {
           delete section[key];
           removed = true;
         }
