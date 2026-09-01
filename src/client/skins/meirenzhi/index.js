@@ -54,6 +54,10 @@ const MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
   + `</svg>`;
 const MARK_URL = "data:image/svg+xml," + encodeURIComponent(MARK_SVG);
 
+// 「凡人修仙传」毛笔字族（2026-09-01 书法体参考）：行楷优先，楷体兜底，
+// 最后回退衬线。字体走浏览器本地字库，缺字时观感退化为常规字体（不阻塞）。
+const NAME_FONT_FAMILY = `"STXingkai", "华文行楷", "Xingkai SC", "STKaiti", "华文楷体", "KaiTi", "楷体", "Noto Serif SC", serif`;
+
 const CSS = [
   // 反色徽章（official HARNESS 反色语言，tgcf badge 同构）：亮=玄夜底雾白字，
   // 暗=雾白底玄夜字。#12121A/#FAF9F6 与面板底色族同源。
@@ -187,8 +191,9 @@ export function createMeirenzhiSkin(jsxRuntime) {
   }
 
   function MeiRenZhiName() {
-    // 「凡人修仙传」鎏金→绯红渐变字 + 反色徽章「美人志」（tgcf badge 同构，
-    // 亮暗反转由 CSS 的 .dsh-mrz-badge 规则承担）。
+    // 「凡人修仙传」行楷/楷体毛笔字族（2026-09-01 产品主人提供的书法体参考）
+    // + 鎏金→绯红渐变裁字 + 反色徽章 BEAUTY（tgcf badge 同构，亮暗反转由
+    // CSS 的 .dsh-mrz-badge 规则承担）。宿主/浏览器缺中文字体时回退 serif。
     return jsx("span", {
       style: {
         display: "inline-flex",
@@ -201,6 +206,7 @@ export function createMeirenzhiSkin(jsxRuntime) {
       children: [
         jsx("span", {
           style: {
+            fontFamily: NAME_FONT_FAMILY,
             background: "linear-gradient(120deg, #A87B2F, #D9B45C 45%, #B8433F)",
             WebkitBackgroundClip: "text",
             backgroundClip: "text",

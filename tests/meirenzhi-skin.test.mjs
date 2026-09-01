@@ -44,6 +44,8 @@ test("brand contract: mark palette, name copy and badge inversion are pinned", (
   assert.equal(mark.props["aria-hidden"], "true");
   const name = skin.Name({});
   assert.equal(name.props.children[0].props.children, "凡人修仙传");
+  // 书法体字族（行楷优先，serif 兜底）随渐变裁字一起钉住。
+  assert.match(String(name.props.children[0].props.style.fontFamily), /STXingkai/);
   assert.equal(name.props.children[1].props.children, "BEAUTY");
   const css = skin.css;
   assert.ok(css.includes("body[data-dsh-meirenzhi-skin][data-ds-dark-theme] .dsh-mrz-badge{background:#FAF9F6;color:#12121A}"));
