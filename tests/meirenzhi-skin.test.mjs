@@ -17,8 +17,8 @@ test("skin contract: identity, slots and 12 builtin assets", () => {
   assert.deepEqual(skin.label, { zh: "凡人修仙传 · 美人志", en: "Mortal's Journey · Beauty Chronicle" });
   assert.equal(typeof skin.Mark, "function");
   assert.equal(typeof skin.Name, "function");
-  assert.ok(skin.favicon.startsWith("data:image/svg+xml,"));
-  assert.equal(skin.faviconMime, "image/svg+xml");
+  assert.ok(skin.favicon.startsWith("data:image/webp;base64,"));
+  assert.equal(skin.faviconMime, "image/webp");
   assert.equal(skin.title, "美人志");
   assert.deepEqual(
     Object.keys(skin.builtinAssets),
@@ -30,22 +30,21 @@ test("skin contract: identity, slots and 12 builtin assets", () => {
   }
 });
 
-test("brand contract: mark palette, name copy and badge inversion are pinned", () => {
-  const svg = decodeURIComponent(skin.favicon.slice("data:image/svg+xml,".length));
-  // 龙标（2026-09-01 掌天瓶退役）：红底渐变 + 金边双线框 + 金身 + 暗金描边 + 红瞳。
-  for (const color of ["#D8402F", "#9E1B14", "#E8B923", "#FFE066", "#D4A017", "#B8860B", "#7A1010"]) {
-    assert.ok(svg.includes(color), `mark svg must carry ${color}`);
-  }
-  for (const fragment of ["linearGradient", "M8 22", "M30 22 C42 20", "rx=\"11\""]) {
-    assert.ok(svg.includes(fragment), `mark svg must carry ${fragment}`);
-  }
+test("brand contract: bundled mark, brush letterforms and badge inversion are pinned", () => {
+  // Mark = user-provided dragon plate, transcoded to WebP (128px q90) and
+  // inlined as a data URL — the image itself is the source of truth now.
   const mark = skin.Mark({});
-  assert.ok(String(mark.props.src).startsWith("data:image/svg+xml,"));
+  assert.ok(String(mark.props.src).startsWith("data:image/webp;base64,"));
+  assert.ok(String(mark.props.src).length > 2000, "bundled dragon webp must be present");
   assert.equal(mark.props["aria-hidden"], "true");
+  // Name = hand-drawn brush letterforms: five glyph groups sharing the ink
+  // gradient (original SVG strokes, no font dependency).
   const name = skin.Name({});
-  assert.equal(name.props.children[0].props.children, "凡人修仙传");
-  // 书法体字族（行楷优先，serif 兜底）随渐变裁字一起钉住。
-  assert.match(String(name.props.children[0].props.style.fontFamily), /STXingkai/);
+  assert.equal(name.props.children[0].component, "img");
+  const nameSrc = decodeURIComponent(String(name.props.children[0].props.src).slice("data:image/svg+xml,".length));
+  assert.equal((nameSrc.match(/<g>/g) || []).length, 5, "five brush glyph groups (凡人修仙传)");
+  assert.ok(nameSrc.includes("dsh-mrz-ink"), "shared ink gradient");
+  assert.ok(nameSrc.includes("M78 12") && nameSrc.includes("M314 12"), "glyph anchors");
   assert.equal(name.props.children[1].props.children, "BEAUTY");
   const css = skin.css;
   assert.ok(css.includes("body[data-dsh-meirenzhi-skin][data-ds-dark-theme] .dsh-mrz-badge{background:#FAF9F6;color:#12121A}"));
