@@ -80,8 +80,9 @@ export function createSkinRuntime() {
         return stored;
       }
     } catch {}
-    // Preserve the existing first-install behavior: OpenBMC remains the
-    // fallback until the user explicitly chooses the official appearance.
+    // Factory default (出厂皮肤): the first registered skin wins until the user
+    // explicitly chooses an appearance — meirenzhi since its introduction,
+    // openbmc before that. Stored selections and ?skin= keep priority.
     return order[0];
   }
 

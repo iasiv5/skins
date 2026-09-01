@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createMeirenzhiSkin } from "../src/client/skins/meirenzhi/index.js";
+import { getSkinSchema } from "../src/shared/personalization/catalog.js";
+
+const skin = createMeirenzhiSkin({ jsx: (component, props) => ({ component, props }) });
+const WALLPAPER_URL = "data:image/webp;base64,AAAA";
+const project = (values) =>
+  skin.project(
+    { wallpaper: "builtin:meirenzhi:yuntai", slogan: { zh: "测", en: "t" }, ...values },
+    { wallpaper: { url: WALLPAPER_URL } },
+  );
+
+test("skin contract: identity, slots and 12 builtin assets", () => {
+  assert.equal(skin.id, "meirenzhi");
+  assert.equal(skin.bodyAttr, "dshMeirenzhiSkin");
+  assert.deepEqual(skin.label, { zh: "凡人修仙传 · 美人志", en: "Mortal's Journey · Beauty Chronicle" });
+  assert.equal(typeof skin.Mark, "function");
+  assert.equal(typeof skin.Name, "function");
+  assert.ok(skin.favicon.startsWith("data:image/svg+xml,"));
+  assert.equal(skin.faviconMime, "image/svg+xml");
+  assert.equal(skin.title, "美人志");
+  assert.deepEqual(
+    Object.keys(skin.builtinAssets),
+    getSkinSchema("meirenzhi").fields.find((f) => f.key === "wallpaper").builtinChoices,
+  );
+  for (const asset of Object.values(skin.builtinAssets)) {
+    assert.equal(asset.mime, "image/webp");
+    assert.ok(asset.url.startsWith("data:image/webp;base64,"));
+  }
+});
+
+test("brand contract: mark palette, name copy and badge inversion are pinned", () => {
+  const svg = decodeURIComponent(skin.favicon.slice("data:image/svg+xml,".length));
+  for (const color of ["#BFE3A8", "#6FAF7C", "#2E6B3E", "#DFF2D0", "#D9B45C", "#8C6B3F"]) {
+    assert.ok(svg.includes(color), `mark svg must carry ${color}`);
+  }
+  for (const fragment of ["linearGradient", "M32 20", "M27 12 h10", "M24.5 52"]) {
+    assert.ok(svg.includes(fragment), `mark svg must carry ${fragment}`);
+  }
+  const mark = skin.Mark({});
+  assert.ok(String(mark.props.src).startsWith("data:image/svg+xml,"));
+  assert.equal(mark.props["aria-hidden"], "true");
+  const name = skin.Name({});
+  assert.equal(name.props.children[0].props.children, "凡人修仙传");
+  assert.equal(name.props.children[1].props.children, "美人志");
+  const css = skin.css;
+  assert.ok(css.includes("body[data-dsh-meirenzhi-skin][data-ds-dark-theme] .dsh-mrz-badge{background:#FAF9F6;color:#12121A}"));
+  assert.ok(css.includes("@keyframes dsh-mrz-drift-a"));
+  assert.ok(css.includes("@keyframes dsh-mrz-drift-b"));
+  assert.ok(css.includes("prefers-reduced-motion:reduce"));
+  assert.ok(css.includes("#root::before") && css.includes("#root::after"));
+});
+
+test("project at factory P=35: riding alphas, constants, scrim and blur", () => {
+  const fx = project({ panelOpacity: 35 });
+  assert.equal(fx.bodyAttribute, "dshMeirenzhiSkin");
+  assert.equal(fx.titleBrand, "美人志");
+  assert.deepEqual(fx.slogans, { zh: "测", en: "t" });
+  assert.equal(fx.backdrop.imageLight, `url("${WALLPAPER_URL}")`);
+  assert.equal(fx.backdrop.imageDark, `url("${WALLPAPER_URL}")`);
+  assert.equal(fx.backdrop.blur, 1);
+  assert.ok(fx.backdrop.overlayLight.includes("rgba(252, 250, 246, 0.040)"));
+  assert.ok(fx.backdrop.overlayDark.includes("rgba(16, 16, 26, 0.040)"));
+  const t = fx.tokenOverrides;
+  assert.equal(t["--dsw-alias-bg-base"].light, "rgba(250, 249, 246, 0.35)");
+  assert.equal(t["--dsw-alias-bg-base"].dark, "rgba(18, 18, 26, 0.35)");
+  assert.equal(t["--dsw-specific-sidebar-fill"].light, "rgba(250, 249, 246, 0.40)");
+  assert.equal(t["--dsw-specific-sidebar-fill"].dark, "rgba(18, 18, 26, 0.52)");
+  assert.equal(t["--dsw-alias-bg-module-platform"].dark, "rgba(18, 18, 26, 0.40)");
+  assert.equal(t["--dsw-specific-input-major"].dark, "rgba(18, 18, 26, 0.45)");
+  assert.equal(t["--dsw-alias-brand-primary"].light, "#B8433F");
+  assert.equal(t["--dsw-alias-brand-primary"].dark, "#E58A80");
+  assert.equal(t["--dsw-alias-brand-text"].dark, "#D9B45C");
+  assert.equal(t["--dsw-alias-bg-overlay"].light, "rgba(252, 250, 246, 0.85)");
+  assert.equal(t["--dsw-alias-bg-overlay"].dark, "rgba(24, 24, 34, 0.88)");
+  assert.equal(t["--dsw-specific-bubble"].dark, "#7E2D33");
+  assert.deepEqual(fx.cssVariables, { "--dsh-mrz-glass-blur": { light: "1px", dark: "1px" } });
+  assert.ok(fx.staticCss.includes("dsh-mrz-badge"));
+  assert.equal(fx.decorations, null);
+});
+
+test("project at P=0: pure wallpaper, no blur layer; at P=100 alphas clamp to 1.00", () => {
+  const zero = project({ panelOpacity: 0 });
+  assert.equal(zero.backdrop.blur, 0);
+  assert.equal(zero.cssVariables, null);
+  assert.equal(zero.tokenOverrides["--dsw-alias-bg-base"].light, "rgba(250, 249, 246, 0.00)");
+  assert.ok(zero.backdrop.overlayLight.includes("rgba(252, 250, 246, 0.000)"));
+  const full = project({ panelOpacity: 100 });
+  assert.equal(full.tokenOverrides["--dsw-specific-sidebar-fill"].dark, "rgba(18, 18, 26, 1.00)");
+  assert.equal(full.backdrop.blur, 12);
+});
+
+test("project falls back to factory slogan when the field is missing", () => {
+  const fx = skin.project(
+    { wallpaper: "builtin:meirenzhi:yuntai", panelOpacity: 35 },
+    { wallpaper: { url: WALLPAPER_URL } },
+  );
+  assert.deepEqual(fx.slogans, { zh: "风起凡尘 · 红颜问道", en: "From mortal dust, immortals bloom" });
+});

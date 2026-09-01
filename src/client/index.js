@@ -2,6 +2,7 @@ import { createSkinRuntime } from "./runtime.js";
 import { installSidebarSwitcher } from "./sidebar-switcher.js";
 import { installRemoteThemePersistence, readLocalThemePreference } from "./theme-persistence.js";
 import { createConfigClient } from "./personalization/config-client.js";
+import { createMeirenzhiSkin } from "./skins/meirenzhi/index.js";
 import { createOpenBmcHarness } from "./skins/openbmc-harness/index.js";
 import { createUefiHarness } from "./skins/uefi-harness/index.js";
 import { createTgcfSkin } from "./skins/tgcf/index.js";
@@ -15,7 +16,7 @@ window.__ModuleLoader__.load({
 
     const runtime = createSkinRuntime();
     const skinById = new Map();
-    for (const factory of [createOpenBmcHarness, createUefiHarness, createTgcfSkin]) {
+    for (const factory of [createMeirenzhiSkin, createOpenBmcHarness, createUefiHarness, createTgcfSkin]) {
       const skin = factory(jsxRuntime);
       if (skin.builtinAssets === undefined) {
         // Legacy skins resolve their builtin art ref through their own baked

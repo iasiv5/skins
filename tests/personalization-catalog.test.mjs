@@ -22,8 +22,27 @@ test("catalog self-invariants hold for every shipped skin", () => {
   assert.deepEqual(validateCatalogInvariants(), []);
 });
 
-test("shipped skins are exactly tgcf, openbmc and uefi-harness", () => {
-  assert.deepEqual(Object.keys(SKINS).sort(), ["openbmc", "tgcf", "uefi-harness"]);
+test("shipped skins are exactly meirenzhi, openbmc, tgcf and uefi-harness", () => {
+  assert.deepEqual(Object.keys(SKINS).sort(), ["meirenzhi", "openbmc", "tgcf", "uefi-harness"]);
+});
+
+test("meirenzhi ships 12 builtin wallpapers with yuntai as the factory default", () => {
+  const schema = getSkinSchema("meirenzhi");
+  const field = (key) => schema.fields.find((f) => f.key === key);
+  assert.equal(field("wallpaper").default, "builtin:meirenzhi:yuntai");
+  assert.deepEqual(field("wallpaper").builtinChoices, [
+    "yuntai", "yuanfeng", "taoyuan", "yueye",
+    "mupeiling", "ziling", "nangongwan", "nangongque",
+    "yinyue", "meining", "songyu", "yanruyan",
+  ]);
+  assert.deepEqual(field("slogan").default, { zh: "风起凡尘 · 红颜问道", en: "From mortal dust, immortals bloom" });
+  assert.equal(field("panelOpacity").default, 35);
+});
+
+test("meirenzhi catalog builtinAssets keys equal the wallpaper choices (cross-layer lock)", () => {
+  const schema = getSkinSchema("meirenzhi");
+  const choices = schema.fields.find((f) => f.key === "wallpaper").builtinChoices;
+  assert.deepEqual(Object.keys(schema.builtinAssets), choices);
 });
 
 test("asset id pattern accepts hyphenless 32-hex and rejects uuid/other shapes", () => {

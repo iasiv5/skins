@@ -94,3 +94,18 @@ test("resolveFailedOperationText composes the rollback suffix in both languages"
   // Uncoded failures keep their host message verbatim.
   assert.equal(resolveFailedOperationText({ phase: "failed", message: "simulated install failure" }, enTr), "simulated install failure");
 });
+
+test("meirenzhi wallpaper labels are localized with the factory-default marker", () => {
+  const keys = [
+    "yuntai", "yuanfeng", "taoyuan", "yueye",
+    "mupeiling", "ziling", "nangongwan", "nangongque",
+    "yinyue", "meining", "songyu", "yanruyan",
+  ];
+  for (const key of keys) {
+    const dictKey = `personalization.meirenzhi.${key}`;
+    assert.ok(DICTS.zh[dictKey]?.length > 0, `zh missing ${dictKey}`);
+    assert.ok(DICTS.en[dictKey]?.length > 0, `en missing ${dictKey}`);
+  }
+  assert.ok(DICTS.zh["personalization.meirenzhi.yuntai"].includes("默认壁纸"));
+  assert.ok(DICTS.en["personalization.meirenzhi.yuntai"].includes("default"));
+});

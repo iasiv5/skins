@@ -92,10 +92,11 @@ console.log("✓ module registered; inject =", JSON.stringify(mod.inject));
 // ---- skin registry ----
 const skins = mod.listSkins();
 console.log("✓ skins:", skins.map((s) => s.id + " (" + s.label + ")").join(", "));
+if (!skins.some((s) => s.id === "meirenzhi")) throw new Error("registry missing meirenzhi");
 if (!skins.some((s) => s.id === "openbmc")) throw new Error("registry missing openbmc");
 if (!skins.some((s) => s.id === "uefi-harness")) throw new Error("registry missing uefi-harness");
 
-// ---- run apply() with a stub ctx (initial skin = openbmc) ----
+// ---- run apply() with a stub ctx (initial skin = meirenzhi) ----
 const slotRegistrations = [];
 const injectedSlotKeys = [];
 const registeredDicts = [];
@@ -167,7 +168,8 @@ const ctx = {
 	effect(setup, label) { const d = setup(); effects.push({ label, d }); },
 };
 mod.apply(ctx);
-if (window.__DSH_SKINS__.active() !== "openbmc") throw new Error("first load must keep OpenBMC as the initial skin");
+if (window.__DSH_SKINS__.active() !== "meirenzhi") throw new Error("first load must land on the factory skin (meirenzhi)");
+console.log("✓ factory skin (meirenzhi) mounts on first load");
 if (themeSnapshot.preference !== "dark") throw new Error("remote fallback should restore dark, got " + themeSnapshot.preference);
 if (window.__DSH_SKINS__.themePreference() !== "dark") throw new Error("diagnostic preference should report dark");
 ctx.theme.setTheme("light");
@@ -180,21 +182,24 @@ const styleTag = (id) => head.children.find((c) => c.tagName === "style" && c.da
 const skinSlots = slotRegistrations.filter((r) => r.opts.priority !== undefined);
 if (skinSlots.length !== 3) throw new Error("expected 3 brand slot registrations, got " + skinSlots.length);
 console.log("✓ slots registered:", skinSlots.map((r) => r.opts.name).join(", "));
-const tagOpenbmc = styleTag("openbmc");
-if (!tagOpenbmc) throw new Error("openbmc style tag missing");
-console.log("✓ per-skin style tag:", tagOpenbmc.dataset.pluginCss);
-console.log("✓ body scope attr:", body.dataset.dshOpenbmcSkin === "");
+const tagMeirenzhi = styleTag("meirenzhi");
+if (!tagMeirenzhi) throw new Error("meirenzhi style tag missing");
+console.log("✓ per-skin style tag:", tagMeirenzhi.dataset.pluginCss);
+console.log("✓ body scope attr:", body.dataset.dshMeirenzhiSkin === "");
 // Backdrop is delivered through a dedicated pseudo-element stylesheet whose
 // selector is scoped to the body attribute; the wallpaper url must appear in
-// the light layer and be swapped under [data-ds-dark-theme].
-const backdropTag = styleTag("openbmc.backdrop");
-if (!backdropTag) throw new Error("openbmc backdrop stylesheet missing");
-if (!backdropTag.textContent.includes("url(")) throw new Error("openbmc backdrop should contain the wallpaper url");
-if (!backdropTag.textContent.includes("body[data-dsh-openbmc-skin]::before")) throw new Error("backdrop must paint through the fixed pseudo layer");
-if (!backdropTag.textContent.includes("[data-ds-dark-theme]::before")) throw new Error("backdrop must swap layers for dark mode");
+// the light layer. The factory wallpaper is THE SAME IMAGE in both themes, so
+// runtime emits no dark-mode ::before — the theme difference rides the
+// overlay layers (::after), which DO swap per theme.
+const backdropTag = styleTag("meirenzhi.backdrop");
+if (!backdropTag) throw new Error("meirenzhi backdrop stylesheet missing");
+if (!backdropTag.textContent.includes("url(")) throw new Error("meirenzhi backdrop should contain the wallpaper url");
+if (!backdropTag.textContent.includes("body[data-dsh-meirenzhi-skin]::before")) throw new Error("backdrop must paint through the fixed pseudo layer");
+if (!backdropTag.textContent.includes("[data-ds-dark-theme]::after")) throw new Error("same-image dark behavior must swap the overlay layer (::after) per theme");
+if (backdropTag.textContent.includes("[data-ds-dark-theme]::before")) throw new Error("same-image wallpaper must not emit a dark-specific ::before");
 console.log("✓ backdrop pseudo stylesheet:", backdropTag.textContent.slice(0, 60) + "...");
 console.log("✓ favicon link appended:", head.children.some((c) => c.rel === "icon" && !c.removed));
-if (document.title !== "OpenBMC Harness") throw new Error("openbmc mount must rebrand the bare tab title, got " + document.title);
+if (document.title !== "美人志") throw new Error("meirenzhi mount must rebrand the bare tab title, got " + document.title);
 console.log("✓ tab title:", document.title);
 
 // the official DocumentTitle projector rewrites the tab asynchronously —
@@ -202,7 +207,7 @@ console.log("✓ tab title:", document.title);
 // title observer convert the brand segment while keeping the session segment.
 document.title = "标题实验 — DeepSeek Harness";
 for (const o of global.__mutationObservers) if (typeof o.cb === "function") o.cb();
-if (document.title !== "标题实验 — OpenBMC Harness") throw new Error("renderer projection must keep the session segment and rebrand the product segment, got " + document.title);
+if (document.title !== "标题实验 — 美人志") throw new Error("renderer projection must keep the session segment and rebrand the product segment, got " + document.title);
 console.log("✓ session-aware tab title:", document.title);
 
 // ---- sidebar switcher: registration + dictionary + component render ----
@@ -236,23 +241,27 @@ console.log("✓ zh/en dictionaries at parity (" + zhKeys.length + " keys, host.
 
 // localized skin metadata: descriptions follow the active UI locale
 if (!String(mod.listSkins().find((s) => s.id === "openbmc").description).includes("冰绡叠浪")) throw new Error("zh skin description missing");
+if (!String(mod.listSkins().find((s) => s.id === "meirenzhi").description).includes("云鬓花颜")) throw new Error("zh meirenzhi description missing");
 activeLocale = "en";
 const openbmcEn = mod.listSkins().find((s) => s.id === "openbmc");
 const uefiEn = mod.listSkins().find((s) => s.id === "uefi-harness");
+const meirenzhiEn = mod.listSkins().find((s) => s.id === "meirenzhi");
 if (!openbmcEn.description.includes("Ice-silk waves") || openbmcEn.description.includes("飘带")) throw new Error("en openbmc description missing: " + openbmcEn.description);
 if (!uefiEn.description.includes("Violet spark") || uefiEn.description.includes("固件") || uefiEn.description.includes("占位")) throw new Error("en uefi description missing: " + uefiEn.description);
+if (!meirenzhiEn.description.includes("Moonlit silks") || meirenzhiEn.description.includes("云鬓")) throw new Error("en meirenzhi description missing: " + meirenzhiEn.description);
 activeLocale = "zh";
 
 // unified card style: every description is a "mark · backdrop · palette" triple
 const officialEn = registeredDictObjects["dsh-skins.ui"].en["skins.official.description"];
 const officialZh = registeredDictObjects["dsh-skins.ui"].zh["skins.official.description"];
-for (const [id, text] of [["official", officialEn], ["openbmc", openbmcEn.description], ["uefi-harness", uefiEn.description]]) {
+for (const [id, text] of [["official", officialEn], ["openbmc", openbmcEn.description], ["uefi-harness", uefiEn.description], ["meirenzhi", meirenzhiEn.description]]) {
 	if ((text.match(/ · /g) || []).length !== 2) throw new Error(`en description for ${id} must be a three-part triple: ${text}`);
 }
 const openbmcZh = mod.listSkins().find((s) => s.id === "openbmc").description;
 const uefiZh = mod.listSkins().find((s) => s.id === "uefi-harness").description;
+const meirenzhiZh = mod.listSkins().find((s) => s.id === "meirenzhi").description;
 if (uefiZh.includes("占位")) throw new Error("zh uefi description must drop the placeholder prefix: " + uefiZh);
-for (const [id, text] of [["official", officialZh], ["openbmc", openbmcZh], ["uefi-harness", uefiZh]]) {
+for (const [id, text] of [["official", officialZh], ["openbmc", openbmcZh], ["uefi-harness", uefiZh], ["meirenzhi", meirenzhiZh]]) {
 	if ((text.match(/ · /g) || []).length !== 2) throw new Error(`zh description for ${id} must be a three-part triple: ${text}`);
 }
 
@@ -265,7 +274,7 @@ console.log("✓ skin descriptions and slot label localize with the active UI lo
 
 // Force the popover open. useState order: open, active skin, box,
 // personalize view, theme preference.
-stateOverrides = [true, "openbmc", { left: 20, bottom: 50 }, null, "dark"];
+stateOverrides = [true, "meirenzhi", { left: 20, bottom: 50 }, null, "dark"];
 const openTree = switcher.comp({ wide: true });
 const portal = openTree.props.children[1];
 if (!portal?.$$portal) throw new Error("open switcher should render a portal");
@@ -305,17 +314,18 @@ for (const node of panelChildren) {
   }
 }
 const updatePanelNode = panelChildren.find((node) => typeof node?.type === "function");
-if (skinCards.length !== 4) throw new Error("skin section needs official appearance + 3 skins, got " + skinCards.length);
-if (gears.length !== 3) throw new Error("every catalog skin exposes a personalization gear, got " + gears.length);
+if (skinCards.length !== 5) throw new Error("skin section needs official appearance + 4 skins, got " + skinCards.length);
+if (gears.length !== 4) throw new Error("every catalog skin exposes a personalization gear, got " + gears.length);
 if (typeof updatePanelNode?.type !== "function") throw new Error("update panel must render after the skin cards");
 if (skinCards[0].props.children[0].props.children !== "DeepSeek Harness（官方）") throw new Error("official appearance must be the first skin card");
 if (skinCards[0].props["aria-checked"] !== false) throw new Error("official appearance must not be selected on first load");
-if (skinCards[1].props["aria-checked"] !== true) throw new Error("OpenBMC must remain selected on first load");
-if (skinCards[3].props.children[0].props.children !== "天官赐福") throw new Error("tgcf must be registered and listed last");
+if (skinCards[1].props["aria-checked"] !== true) throw new Error("meirenzhi (factory skin) must remain selected on first load");
+if (skinCards[1].props.children[0].props.children !== "凡人修仙传 · 美人志") throw new Error("meirenzhi must be registered second (factory skin first in the list)");
+if (skinCards[4].props.children[0].props.children !== "天官赐福") throw new Error("tgcf must be registered and listed last");
 themeCards[2].props.onClick();
 if (themeSnapshot.preference !== "system") throw new Error("system button must call official theme.setTheme");
 if (storage.get("dsh-skins:theme-preference") !== "system") throw new Error("system selection must persist remotely");
-console.log("✓ popover: appearance(3) + skins(4: official first, tgcf last) + gears(3); system theme persisted");
+console.log("✓ popover: appearance(3) + skins(5: official first, meirenzhi second, tgcf last) + gears(4); system theme persisted");
 
 // ---- update panel states: local development, available Release, up to date ----
 stateOverrides = [{
@@ -374,16 +384,18 @@ if (restartUpdate.props.children[1].props.children[1].props.children !== "稍后
 console.log("✓ update panel covers link, available, current, error, progress, and restart states");
 
 // ---- restore the official appearance, then switch via the public selector ----
-const openbmcFavicon = head.children.find((c) => c.rel === "icon" && !c.removed);
+// The mount being torn down here is the INITIAL one — the factory skin
+// (meirenzhi) — so the cleanup assertions reference meirenzhi artifacts.
+const meirenzhiFavicon = head.children.find((c) => c.rel === "icon" && !c.removed);
 mod.selectSkin("official");
 if (window.__DSH_SKINS__.active() !== "official") throw new Error("official appearance must become active");
 if (storage.get("dsh-skins:active") !== "official") throw new Error("official appearance selection must persist");
 if (mod.selectSkin("default") !== "official") throw new Error("legacy \"default\" alias must normalize to official");
 if (storage.get("dsh-skins:active") !== "official") throw new Error("legacy \"default\" alias must persist as official");
-if (!tagOpenbmc.removed) throw new Error("custom skin style must be removed for the official appearance");
-if (styleTag("openbmc.backdrop") !== undefined && !styleTag("openbmc.backdrop").removed) throw new Error("official appearance must remove the OpenBMC backdrop stylesheet");
-if (body.dataset.dshOpenbmcSkin !== undefined) throw new Error("official appearance must remove the OpenBMC body scope");
-if (!openbmcFavicon?.removed) throw new Error("official appearance must remove the custom favicon");
+if (!tagMeirenzhi.removed) throw new Error("custom skin style must be removed for the official appearance");
+if (styleTag("meirenzhi.backdrop") !== undefined && !styleTag("meirenzhi.backdrop").removed) throw new Error("official appearance must remove the meirenzhi backdrop stylesheet");
+if (body.dataset.dshMeirenzhiSkin !== undefined) throw new Error("official appearance must remove the meirenzhi body scope");
+if (!meirenzhiFavicon?.removed) throw new Error("official appearance must remove the custom favicon");
 if (document.title !== "标题实验 — DeepSeek Harness") throw new Error("official appearance must restore the official brand segment, got " + document.title);
 if (themeSnapshot.preference !== "system") throw new Error("skin selection must not change the official theme preference");
 console.log("✓ DeepSeek Harness official appearance restored branding, background, favicon and tab title; selection persisted");
