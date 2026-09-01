@@ -14,7 +14,7 @@ import { createPersonalizationPanel } from "../src/client/personalization/panel.
 import { getSkinSchema } from "../src/shared/personalization/catalog.js";
 import { createFakeReact, jsx, flatten, findButton } from "./fake-react.mjs";
 
-const SKINS = ["openbmc", "uefi-harness", "tgcf"];
+const SKINS = ["openbmc", "uefi-harness", "tgcf", "meirenzhi"];
 const STATUSES = ["synced", "offline-failed"];
 
 function makeConfigClient(overrides = {}) {
@@ -500,4 +500,19 @@ test("library pagination folds after three rows: 18 inline, the rest behind load
   await findButton(panel.tree(), "personalization.library.more count=6").props.onClick();
   assert.equal(cellsOf(panel.tree()).length, 24, "expanding reveals every remaining asset");
   assert.equal(findButton(panel.tree(), "personalization.library.more count=6"), null, "the button retires when nothing is hidden");
+});
+
+test("meirenzhi panel renders one wallpaper thumb per catalog builtinChoices (12)", async () => {
+  const panel = mountPanel({ skinId: "meirenzhi", status: "synced" });
+  await tick();
+  const choices = getSkinSchema("meirenzhi").fields.find((f) => f.key === "wallpaper").builtinChoices;
+  // The panel splits the wallpaper row into a BUILTIN thumbs container and a
+  // LIBRARY thumbs container — count only the builtin group's thumbs. Token
+  // match, because "dsh-skins-pz-thumbs" contains "dsh-skins-pz-thumb" as a
+  // substring and would otherwise count the container itself.
+  const hasToken = (node, token) => String(node.props?.className ?? "").split(/\s+/).includes(token);
+  const containers = flatten(panel.tree()).filter((n) => hasToken(n, "dsh-skins-pz-thumbs"));
+  const builtinThumbs = flatten(containers[0]).filter((n) => hasToken(n, "dsh-skins-pz-thumb"));
+  assert.equal(builtinThumbs.length, choices.length, "one thumb per registered builtin choice");
+  assert.equal(choices.length, 12, "meirenzhi registers exactly 12 builtins");
 });

@@ -1,6 +1,6 @@
 # dsh-skins 个性化
 
-DSH Web 皮肤插件的个性化语境：三套皮肤（openbmc / uefi-harness / tgcf）共用的声明式外观定制体系，以及承载它的交互容器与编辑语义。
+DSH Web 皮肤插件的个性化语境：四套皮肤（meirenzhi / openbmc / uefi-harness / tgcf）共用的声明式外观定制体系，以及承载它的交互容器与编辑语义。
 
 ## Language
 
@@ -9,6 +9,10 @@ DSH Web 皮肤插件的个性化语境：三套皮肤（openbmc / uefi-harness /
 **官方皮肤**:
 宿主自带的默认外观（DeepSeek Harness），可在外观选择中选择，但不进入个性化目录，没有可编辑字段。
 _Avoid_: 默认皮肤
+
+**出厂皮肤**:
+未持久化任何皮肤选择时的兜底皮肤，注册顺序第一位。用户显式选择（含选官方）后立即让位。
+_Avoid_: 默认皮肤（与官方皮肤混淆）
 
 ### 交互容器
 

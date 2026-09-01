@@ -224,11 +224,20 @@ if (gate) {
   await preparePrivateCapture(gpage);
 
   // 1. Every catalog skin card exposes a keyboard-focusable gear.
+  // `runtime.list()` returns ONLY the extension skins (official is prepended
+  // by the switcher at render time), so gear count === list length and the
+  // gear NodeList order === the extension list order. `--skin` now REALLY
+  // decides which skin's panel the gate exercises (the old `.last()` always
+  // hit the last card regardless of --skin).
   await openSwitcher(gpage);
   const gears = gpage.locator(".dsh-skins-pz-gear");
-  check(await gears.count() === 3, `personalization gear on all 3 catalog skins (got ${await gears.count()})`);
-  await gears.first().focus();
-  check(await gears.first().evaluate((node) => node === document.activeElement), "gear is keyboard focusable");
+  const skinIds = await gpage.evaluate(() => window.__DSH_SKINS__.list().map((item) => item.id));
+  check(await gears.count() === skinIds.length, `personalization gear on all ${skinIds.length} catalog skins (got ${await gears.count()})`);
+  const targetIndex = skinIds.indexOf(skin);
+  if (targetIndex < 0) throw new Error(`unknown or non-personalizable gate skin: ${skin}`);
+  const targetGear = gears.nth(targetIndex);
+  await targetGear.focus();
+  check(await targetGear.evaluate((node) => node === document.activeElement), "gear is keyboard focusable");
 
   // 2. Gear docks the panel column; Escape closes the WHOLE combined shell.
   await gpage.keyboard.press("Enter");
@@ -246,9 +255,17 @@ if (gate) {
   //    flow; persistence is asserted through the panel's own synced
   //    input, independent of host DOM.
   const sloganInput = () => gpage.locator('.dsh-skins-pz-panel input[aria-label="标语 (ZH)"]');
+  // Factory slogans per gate skin: 恢复默认 must land back on the skin's OWN
+  // catalog default (complete map — every --skin target is covered).
+  const FACTORY_SLOGANS_ZH = {
+    meirenzhi: "风起凡尘 · 红颜问道",
+    openbmc: "察于未萌 · 治于未乱",
+    "uefi-harness": "启于固件 · 行于万象",
+    tgcf: "百无禁忌",
+  };
   const openPanel = async () => {
     await openSwitcher(gpage);
-    await gpage.locator(".dsh-skins-pz-gear").last().click();
+    await targetGear.click();
     await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
   };
   await openPanel();
@@ -265,15 +282,17 @@ if (gate) {
   await gpage.reload();
   await preparePrivateCapture(gpage);
   await openPanel();
-  check(await sloganInput().inputValue() === "百无禁忌", "恢复默认 restores the factory slogan");
+  check(await sloganInput().inputValue() === FACTORY_SLOGANS_ZH[skin], "恢复默认 restores the factory slogan");
 
   // 4. Static branding: the lantern favicon is a fixed skin asset (Q35).
   const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
   check(typeof favicon === "string" && favicon.length > 0, "static skin favicon present");
 
   // 5. Personalization panel shot for records (docs/assets/<skin>-personalize).
-  await openSwitcher(gpage);
-  await gpage.locator(".dsh-skins-pz-gear").last().click();
+  // Lifecycle: the panel from step 3's openPanel() is STILL OPEN here — the
+  // old code unconditionally called openSwitcher() again, which TOGGLED the
+  // shell closed (the trigger is a toggle) and raced the gear click against
+  // the unmounting node. Reuse the open panel instead.
   await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
   await writeShot(`${skin}-personalize.webp`, await toWebp(gpage, await gpage.screenshot()));
   await closeSwitcher(gpage);

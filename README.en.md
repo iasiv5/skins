@@ -24,7 +24,7 @@ dsh plugin --profile web add github:iasiv5/skins#main
 3. Refresh the page.
 4. Click **Skin Switcher** at the bottom of the sidebar and pick a skin.
 
-On a fresh install with no saved choice, OpenBMC is the default skin. For reproducible installs, use a tag from [Releases](../../releases) or pin a reviewed 40-character commit SHA:
+On a fresh install with no saved choice, 美人志 (meirenzhi, "Mortal's Journey · Beauty Chronicle") is the factory-default skin. For reproducible installs, use a tag from [Releases](../../releases) or pin a reviewed 40-character commit SHA:
 
 ```sh
 dsh plugin --profile web add github:iasiv5/skins#<commit-sha>
@@ -52,23 +52,25 @@ If the install fails, send me the command output verbatim and retry at most once
 
 </details>
 
-## Four appearances
+## Five appearances
 
 This section answers: which skins exist and what each feels like.
 
 | Choice ID | Kind | Description |
 |---|---|---|
 | `official` | built-in option | Plain paper & dark ink · breathing white space · naturally itself |
+| `meirenzhi` | full skin · factory default | Jade faces & flowered looks · moonlit silks by night · asking the Dao in mortal dust |
 | `openbmc` | full skin | Ribbon mark · storm-wing backdrop · ice-blue palette |
 | `uefi-harness` | placeholder skin | Violet spark · gilded backdrop · violet-blue palette |
 | `tgcf` | full skin | A thousand lights · vermilion & gold · night shared bright |
 
 - `official` restores the official DeepSeek Harness branding, backdrop and favicon, while keeping the skin switcher and the official light/dark palettes.
-- `openbmc` is the default skin. "Official" only means restoring the official interface; it is not the first-load choice.
+- `meirenzhi` is the factory-default skin: it applies on first load whenever no choice has been saved; `openbmc` no longer serves as the first-install fallback. "Official" only means restoring the official interface; it is not the first-load choice.
 - Every skin ships one palette per light/dark mode and follows the appearance setting automatically:
 
 ![OpenBMC, light](docs/assets/openbmc-light.webp)
 
+- `meirenzhi` (凡人修仙传 · A Mortal's Journey: Beauty Chronicle) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; the 12 bundled wallpapers (4 group shots + 8 solo portraits) are AI-generated fan art (provided by the plugin author), while the Reach-for-the-Sky Vial site icon, the badge and the firefly sprites remain original code-drawn SVG — no official artwork is bundled. Vermilion-and-gold in both light and dark, slogan "From mortal dust, immortals bloom" (风起凡尘 · 红颜问道).
 - `uefi-harness` is a placeholder skin: the architecture and interactions come first, the brand slots carry the UEFI Forum's official logo, a gilded circuit-board photo serves as the backdrop, and the final design lands later.
 - `tgcf` (Heaven Official's Blessing · No Taboos) is an **unofficial fan work** with no affiliation with or authorization from the copyright holders; the factory wallpapers are AI-generated fan art (made with Doubao, provided by the plugin author), while the site icon and drifting-butterfly decoration remain original code-drawn SVG — no official artwork is bundled. Vermilion-and-gold dark mode, pale-gold light mode, slogan "No Taboos".
 
@@ -80,7 +82,7 @@ This section answers: what each skin exposes, where settings live, and when edit
 
 Every skin card carries a gear button that docks that skin's personalization panel beside the switcher (stacked vertically on narrow windows):
 
-- **Customizable fields** (one standard field set across all three skins: `tgcf` / `openbmc` / `uefi-harness`): wallpaper (built-in artwork + a personal library), slogan (zh/en), panel translucency (0–100%; one value jointly drives the panel tint, the wallpaper scrim and the blur — 0% is pure, fully visible wallpaper, 100% fully hides it; each skin's default anchors its factory look — tgcf 35%, openbmc/uefi 55%). Colours, the site icon and the tab title are fixed skin design and no longer adjustable.
+- **Customizable fields** (one standard field set across all four skins: `tgcf` / `openbmc` / `uefi-harness` / `meirenzhi`): wallpaper (built-in artwork + a personal library), slogan (zh/en), panel translucency (0–100%; one value jointly drives the panel tint, the wallpaper scrim and the blur — 0% is pure, fully visible wallpaper, 100% fully hides it; each skin's default anchors its factory look — tgcf 35%, meirenzhi 35%, openbmc/uefi 55%). Colours, the site icon and the tab title are fixed skin design and no longer adjustable.
 - **Personal library**: upload PNG / JPEG / WebP / GIF (≤ 20MB each, GIF ≤ 12MP; animated WebP and SVG are rejected). Multi-select is supported — files upload one by one with progress and per-file failure reasons — and the library has no count cap. Shared by all skins; deleting a referenced image or clearing the library lists every affected skin and field first.
 - **Auto-save**: every change in the panel (wallpaper, slogan, panel translucency) applies immediately and persists automatically after a brief debounce — field changes need no save button and no confirmation; Reset-to-default is the one guarded action — it lists the settings it will reset and asks before applying, then persists automatically. Same click-to-apply experience as switching skins. While the panel is open, clicking another skin's card moves the panel to that skin.
 - **Storage & upgrades**: configuration and the library live under `$DSH_HOME/dsh-skins/` (isolated from the plugin install directory), so upgrades / rollbacks / one-click updates preserve them by construction; only overrides are stored, and new defaults flow to untouched fields; leftovers of retired fields are cleaned up at load.
@@ -99,7 +101,7 @@ The **Skin Switcher** popover at the bottom of the sidebar has two sections:
 
 When the sidebar is collapsed, the entry shows as a round palette icon. Choosing "Official" only undoes the extension skins — your light/dark/system preference is untouched. Multiple `sidebar.footer.action` entries stack vertically instead of overlapping.
 
-The URL switches skins too: `/?skin=official`, `/?skin=openbmc`, `/?skin=uefi-harness`, `/?skin=tgcf`. The choice is stored in `localStorage["dsh-skins:active"]`.
+The URL switches skins too: `/?skin=official`, `/?skin=meirenzhi`, `/?skin=openbmc`, `/?skin=uefi-harness`, `/?skin=tgcf`. The choice is stored in `localStorage["dsh-skins:active"]`.
 
 Console debug API:
 

@@ -10,15 +10,32 @@
 
 ## 自动化 gate（半自动）
 
+> 美人志（meirenzhi）入列后齿轮数为 4，且 `--skin` 现在真正决定 gate 操作的皮肤
+> （旧实现恒操作列表最后一张卡）。四套皮肤各自的 gate 都要通过：
+
 - [ ] `node scripts/capture-previews.mjs --skin tgcf --gate` → 输出 `GATE PASSED`
-      （断言：3 个齿轮键盘可达、面板粘连展开、Esc 整壳关闭、保存→标题换装且刷新后保持、
-      恢复默认→保存→出厂标题复原、静态印章 favicon（1.0.0 印章化）；截图含隐私门禁）
+      （断言：4 个齿轮键盘可达、面板粘连展开、Esc 整壳关闭、保存→标题换装且刷新后保持、
+      恢复默认→保存→出厂标语「百无禁忌」复原、静态印章 favicon；截图含隐私门禁）
       证据：终端输出 + `docs/assets/tgcf-personalize.webp`
-- [ ] `node scripts/capture-previews.mjs --skin tgcf` 与 `--skin openbmc` 重拍全部截图
-      证据：`docs/assets/{tgcf,openbmc}-{dark,light}.webp`、`*-switcher-dark.webp`
+- [ ] `node scripts/capture-previews.mjs --skin meirenzhi --gate` → `GATE PASSED`
+      （恢复默认 → 出厂标语「风起凡尘 · 红颜问道」；掌天瓶 favicon）
+      证据：终端输出 + `docs/assets/meirenzhi-personalize.webp`
+- [ ] `node scripts/capture-previews.mjs --skin openbmc --gate` → `GATE PASSED`
+      （恢复默认 → 出厂标语「察于未萌 · 治于未乱」）证据：终端输出
+- [ ] `node scripts/capture-previews.mjs --skin uefi-harness --gate` → `GATE PASSED`
+      （恢复默认 → 出厂标语「启于固件 · 行于万象」）证据：终端输出
+- [ ] `node scripts/capture-previews.mjs --skin tgcf`、`--skin openbmc`、`--skin meirenzhi` 重拍全部截图
+      证据：`docs/assets/{tgcf,openbmc,meirenzhi}-{dark,light}.webp`、`*-switcher-dark.webp`
 
 ## 手工验收（每项记录观察结果）
 
+- [ ] meirenzhi 视觉：亮色暖雾白主视觉 / 深色玄夜蓝紫；12 张内置壁纸切换正常
+      （001合照「云台雅集」默认领头，4 合照 + 8 单人，通透度出厂 35）
+- [ ] meirenzhi 面板：壁纸一行 6 张共两排（内置 12 张 + 图库）；标语中英出厂
+      「风起凡尘 · 红颜问道」/ "From mortal dust, immortals bloom"；编辑/恢复默认走 ADR-0003 自动保存
+- [ ] meirenzhi 明暗同图机制：切换外观配色时壁纸不变，仅纱与面板色系切换
+      （浅=暖雾白纱、深=玄夜纱）；掌天瓶 favicon/徽章在两态下反色正常；萤火粒子
+      reduced-motion 下静止
 - [ ] tgcf 视觉：暗色朱红鎏金 / 亮色素白金线；三张内置画作切换正常（月下同伞默认 / 花城、谢怜备选，遮罩单值 35 出厂默认）
 - [ ] tgcf 新会话框通透（1.0.0）：浅/深两主题下输入卡片均为玻璃态（input-major 随旋钮联动，非宿主实色），拖动通透度旋钮卡片浓淡随动
 - [ ] 自动保存流（ADR-0003）：拖动遮罩/模糊/面板透明度、改标语或换壁纸 → 界面即时生效；

@@ -355,7 +355,7 @@ test("⑩ shell is clamped to the space above its anchor; panel column scrolls; 
   assert.ok(css.includes(".dsh-skins-pop{transition:none}"),
     "reduced-motion skips the width animation");
   assert.ok(
-    css.includes('body[data-ds-dark-theme]:not([data-dsh-openbmc-skin]):not([data-dsh-uefi-harness]):not([data-dsh-tgcf-skin]) .dsh-skins-pop{background:rgba(41,42,44,0.97)}'),
+    css.includes('body[data-ds-dark-theme]:not([data-dsh-meirenzhi-skin]):not([data-dsh-openbmc-skin]):not([data-dsh-uefi-harness]):not([data-dsh-tgcf-skin]) .dsh-skins-pop{background:rgba(41,42,44,0.97)}'),
     "official dark pop gets a deep charcoal, skinned modes keep their token overlay (ruling #16)");
   assert.ok(
     css.includes(".dsh-skins-pop-card-on,.dsh-skins-pop-card-on:hover{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-module-platform)}"),
