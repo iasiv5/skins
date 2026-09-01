@@ -5,11 +5,12 @@
  * The 12 bundled wallpapers (4 group + 8 solo, generated
  * by scripts/build-meirenzhi-wallpapers.mjs) are AI-generated fan art the
  * product owner supplied for bundling — NOT official《凡人修仙传》material.
- * The 掌天瓶 (mysterious little bottle) brand mark, the badge and the
- * firefly sprites are original code-drawn SVG. The personalization contract
- * lives in src/shared/personalization/catalog.js. Effects are produced by
- * `project()` (values → SkinEffects) and executed by the generic runtime;
- * this module never touches the DOM.
+ * The 掌天瓶 (mysterious little bottle) brand mark/favicon is an original
+ * code-drawn SVG; the 美人志 badge is rendered with HTML/CSS and the
+ * fireflies with CSS pseudo-elements + radial gradients. The personalization
+ * contract lives in src/shared/personalization/catalog.js. Effects are
+ * produced by `project()` (values → SkinEffects) and executed by the generic
+ * runtime; this module never touches the DOM.
  */
 
 import {

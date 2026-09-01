@@ -1,9 +1,10 @@
-# 美人志（meirenzhi）皮肤 · 出厂默认 实施计划（修订版 2.1）
+# 美人志（meirenzhi）皮肤 · 出厂默认 实施计划（修订版 2.3）
 
 > 修订记录：
 > - v2 吸收外部评审第一轮（2026-09-01）：素材预算重校准、Task 8 十项迁移表、release gate 纳入、grep 退出码、Y1–Y7。
 > - v2.1 吸收外部评审第二轮（2026-09-01）：**产品负责人已裁决——在 `main` 分支执行、素材采用方案 B（质量优先，固定 2560/q80），本计划已按此落盘，执行者不得就这两个选择再次询问**。R2 修正 gate 齿轮数量与索引算法（`runtime.list()` 只含扩展皮肤，v2 的 `−1` 公式错误）；R3 收紧 checkpoint 纪律；R4 工作区干净改用 `git status --porcelain` 断言；Y1 WebP 合计改机器可读标记；Y2 原子写明确为临时文件 + rename；Y3 panel 测试改述为覆盖扩展；Y4 Task 8 的 OpenBMC grep 允许范围修正。
 > - v2.2 吸收外部评审第三轮（2026-09-01）：R1 实施计划文件本身纳入文件清单与最终提交（否则 Step 5 的 clean 断言必然失败）；R2 修复 release gate 截图阶段重复 `openSwitcher()` 把仍打开的弹层点关的生命周期缺陷；Y1 checkpoint 纪律改写为「细粒度 / 合并」两个无歧义模式（Task 10/11/12 为非打包文件，独立于两模式）；Y2 `lib`、`src/client/skins/meirenzhi` 等目录路径展开为精确文件路径；Y3 README URL 明确为在 `/?skin=official` 之后**插入**。
+> - v2.3 吸收执行产物审查（2026-09-01）：机器标记改为 JSDoc 后的独立行注释（`^// TOTAL_WEBP_BYTES=`，计划内 sed 命令同步更新）；生成器护栏失败改 throw 进 finally（不再 process.exit 漏临时目录）并补失败清理测试；新增 `scripts/verify-bundle-guard.mjs` 并入 `pnpm run check`；SVG/CSS 来源措辞修正（徽章=HTML/CSS、萤火=CSS 伪元素+径向渐变）；release checklist「标题换装」改为「标语自动保存」。
 
 ## 目标
 

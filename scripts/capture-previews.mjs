@@ -284,7 +284,7 @@ if (gate) {
   await openPanel();
   check(await sloganInput().inputValue() === FACTORY_SLOGANS_ZH[skin], "恢复默认 restores the factory slogan");
 
-  // 4. Static branding: the lantern favicon is a fixed skin asset (Q35).
+  // 4. Static branding: the target skin's favicon is a fixed skin asset.
   const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
   check(typeof favicon === "string" && favicon.length > 0, "static skin favicon present");
 

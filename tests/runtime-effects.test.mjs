@@ -9,6 +9,7 @@ import test from "node:test";
 import { createSkinRuntime } from "../src/client/runtime.js";
 import { createTgcfSkin } from "../src/client/skins/tgcf/index.js";
 import { createOpenBmcHarness } from "../src/client/skins/openbmc-harness/index.js";
+import { createMeirenzhiSkin } from "../src/client/skins/meirenzhi/index.js";
 
 // ---- minimal DOM stub --------------------------------------------------------
 
@@ -83,6 +84,10 @@ function installDom() {
   };
   return {
     document, events, observers,
+    storage: {
+      getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+      setItem: (key, value) => storage.set(key, value),
+    },
     injectObserveFailure: (count = 1) => { observeFailuresLeft = count; },
     styleTag: (id) => head.children.find((child) => child.tagName === "style" && child.dataset.pluginCss === id && !child.removed) ?? null,
     favicon: () => [...head.children].filter((child) => child.tagName === "link" && !child.removed).at(-1) ?? null,
@@ -231,4 +236,33 @@ test("N1: selecting a skin that cannot project keeps the current skin", () => {
   assert.equal(runtime.active(), "tgcf", "failed selection must not change the active skin");
   assert.equal(dom.document.body.dataset.dshTgcfSkin, "");
   assert.ok(dom.styleTag("dsh-skins/tgcf.backdrop.css"));
+});
+
+test("factory-skin switch keeps every stored selection intact (resolveSelectedId contract)", () => {
+  // Product promise: making meirenzhi the FIRST registered skin only affects
+  // users with NO stored choice. Registration order must never override an
+  // existing selection, and only a stale/invalid stored id falls through.
+  const dom = installDom();
+  const runtime = createSkinRuntime();
+  const meirenzhi = createMeirenzhiSkin(stubJsx);
+  const openbmc = withLegacyAssets(createOpenBmcHarness(stubJsx));
+  runtime.register(meirenzhi);
+  runtime.register(openbmc);
+  runtime.setPersonalization(personalizationFor(new Map([["meirenzhi", meirenzhi], ["openbmc", openbmc]])));
+  const ctx = makeCtx();
+
+  // A user who already chose openbmc keeps it.
+  dom.storage.setItem("dsh-skins:active", "openbmc");
+  runtime.apply(ctx);
+  assert.equal(runtime.active(), "openbmc");
+
+  // The compatibility alias "official" also wins over the factory skin.
+  dom.storage.setItem("dsh-skins:active", "official");
+  runtime.apply(ctx);
+  assert.equal(runtime.active(), "official");
+
+  // Only a stale/invalid stored value falls through to the factory skin.
+  dom.storage.setItem("dsh-skins:active", "not-a-skin");
+  runtime.apply(ctx);
+  assert.equal(runtime.active(), "meirenzhi");
 });

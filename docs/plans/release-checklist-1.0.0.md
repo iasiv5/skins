@@ -14,8 +14,8 @@
 > （旧实现恒操作列表最后一张卡）。四套皮肤各自的 gate 都要通过：
 
 - [ ] `node scripts/capture-previews.mjs --skin tgcf --gate` → 输出 `GATE PASSED`
-      （断言：4 个齿轮键盘可达、面板粘连展开、Esc 整壳关闭、保存→标题换装且刷新后保持、
-      恢复默认→保存→出厂标语「百无禁忌」复原、静态印章 favicon；截图含隐私门禁）
+      （断言：4 个齿轮键盘可达、面板粘连展开、Esc 整壳关闭、修改标语→自动保存→刷新后保持、
+      恢复默认→保存→出厂标语「百无禁忌」复原、目标皮肤静态 favicon；截图含隐私门禁）
       证据：终端输出 + `docs/assets/tgcf-personalize.webp`
 - [ ] `node scripts/capture-previews.mjs --skin meirenzhi --gate` → `GATE PASSED`
       （恢复默认 → 出厂标语「风起凡尘 · 红颜问道」；掌天瓶 favicon）

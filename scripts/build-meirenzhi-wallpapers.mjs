@@ -15,6 +15,10 @@
  *   合计 ≤ 4,700,000 字节（2026-09-01 实测 4,539,816）
  *
  * 壁纸为 AI 生成同人图，非官方《凡人修仙传》素材；不标注生成工具。
+ *
+ * Failure hygiene (execution-review Y2): every failure path THROWS so the
+ * single finally below always removes the temp work dir and the same-dir
+ * temp output — process.exit() is never used inside the guarded region.
  */
 
 import { execFileSync } from "node:child_process";
@@ -65,8 +69,9 @@ const SOURCES = [
 const CONST_NAME = (key) => `WALLPAPER_${key.toUpperCase()}`;
 
 function fail(message) {
-  console.error(`build-meirenzhi-wallpapers: ${message}`);
-  process.exit(1);
+  // THROW, never process.exit(): exit() skips finally blocks and would leak
+  // the mkdtemp work dir (execution-review finding Y2).
+  throw new Error(`build-meirenzhi-wallpapers: ${message}`);
 }
 
 function probeSize(webpPath) {
@@ -83,18 +88,23 @@ function probeSize(webpPath) {
   return { width, height };
 }
 
-if (!existsSync(srcDir)) fail(`source dir not found: ${srcDir}`);
-for (const [file] of SOURCES) {
-  if (!existsSync(join(srcDir, file))) fail(`missing source image: ${join(srcDir, file)}`);
-}
-
-const workDir = mkdtempSync(join(tmpdir(), "mrz-wallpapers-"));
-// Atomic delivery: write the temp file NEXT TO the target, then rename over it —
-// a crash mid-write can never truncate an existing module.
-const tempOut = `${outPath}.tmp-${process.pid}`;
+let workDir = null;
+let tempOut = null;
 let committed = false;
 
 try {
+  // ---- preflight (before any temp state exists) ----
+  if (!existsSync(srcDir)) fail(`source dir not found: ${srcDir}`);
+  for (const [file] of SOURCES) {
+    if (!existsSync(join(srcDir, file))) fail(`missing source image: ${join(srcDir, file)}`);
+  }
+
+  workDir = mkdtempSync(join(tmpdir(), "mrz-wallpapers-"));
+  // Atomic delivery: write the temp file NEXT TO the target, then rename over
+  // it — a crash mid-write can never truncate an existing module.
+  tempOut = `${outPath}.tmp-${process.pid}`;
+
+  // ---- transcode + drift guards ----
   const rows = [];
   for (const [file, key] of SOURCES) {
     const src = join(srcDir, file); // 文件名含中文：路径原样传给 ffmpeg，不做任何归一化。
@@ -117,9 +127,10 @@ try {
 
   const total = rows.reduce((sum, row) => sum + row.bytes, 0);
   if (total > MAX_TOTAL_BYTES) {
-    fail(`total ${total} bytes exceeds the ${MAX_TOTAL_BYTES}-byte drift guard — was a source image replaced?`);
+    fail(`total ${total} bytes exceeds the ${MAX_TOTAL_BYTES}-byte drift guard — was the source image replaced?`);
   }
 
+  // ---- emit module (machine-readable markers as standalone line comments) ----
   const provenance = rows.map((row) => {
     return ` *   ${row.key.padEnd(12)} ${row.sha256} / ${row.width}x${row.height} / q${ENCODE_QUALITY} / ${row.bytes}`;
   });
@@ -134,13 +145,13 @@ try {
  * Per-image provenance (source sha256 / encoded size / quality / webp bytes):
 ${provenance.join("\n")}
  *   TOTAL        ${total} bytes
- *
- * // TOTAL_WEBP_BYTES=${total}
- * // ENCODE_WIDTH=${ENCODE_WIDTH}
- * // ENCODE_QUALITY=${ENCODE_QUALITY}
  */
+// TOTAL_WEBP_BYTES=${total}
+// ENCODE_WIDTH=${ENCODE_WIDTH}
+// ENCODE_QUALITY=${ENCODE_QUALITY}
 `;
 
+  // ---- atomic delivery + summary ----
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(tempOut, header + body.join("\n") + "\n");
   renameSync(tempOut, outPath);
@@ -151,7 +162,11 @@ ${provenance.join("\n")}
   }
   console.log(`TOTAL        ${total} bytes (guard ≤ ${MAX_TOTAL_BYTES})`);
   console.log(`✓ wrote ${outPath}`);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
 } finally {
-  rmSync(workDir, { recursive: true, force: true });
-  if (!committed) rmSync(tempOut, { force: true });
+  // Runs on EVERY path (throw included) — failure never leaks temp state.
+  if (workDir !== null) rmSync(workDir, { recursive: true, force: true });
+  if (!committed && tempOut !== null) rmSync(tempOut, { force: true });
 }
