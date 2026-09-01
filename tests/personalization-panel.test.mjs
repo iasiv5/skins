@@ -335,6 +335,13 @@ test("no theme UI and no theme keys remain anywhere (⑦)", () => {
   }
   assert.ok(dictsSource.includes('"personalization.library.uploading"'), "uploading key exists");
   assert.ok(dictsSource.includes('"personalization.panelLabel"'), "panelLabel key exists");
+  assert.ok(dictsSource.includes('"personalization.collapse"'), "collapse key exists (v1.0.0 header ruling)");
+  // Direction pin (field report: the chevrons shipped pointing right, which
+  // reads as "expand" — collapse travels left, the way the panel's edge moves;
+  // and the compact `M11 6-6 …` path form rendered as a garbled bar in
+  // Chromium, so the pin also guards the explicit-command spelling).
+  assert.ok(panelSource.includes('d: "M17 6 L11 12 L17 18 M11 6 L5 12 L11 18"'),
+    "collapse glyph points LEFT (double left-chevron) spelled with explicit L commands");
 });
 
 test("a rejected upload surfaces the server's reason — never the delete copy", async () => {

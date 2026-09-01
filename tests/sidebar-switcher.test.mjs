@@ -153,7 +153,7 @@ function makeHarness(viewportHeight = 900) {
   const collapseButton = () => inShell().find(
     (n) => n.type === "button" && String(n.props.className).includes("dsh-skins-pz-collapse"),
   ) ?? null;
-  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "通透度 | Transparency");
+  const translucencyInput = () => inShell().find((n) => n.type === "input" && n.props["aria-label"] === "通透度 Transparency");
   const heading = () => inShell().find((n) => n.props?.role === "heading");
 
   render();

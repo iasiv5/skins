@@ -47,6 +47,7 @@ export const DICTS = {
     "update.phase.rollback": "更新失败，正在恢复原版本…",
     // Personalization surface (1.0.0)
     "personalization.title": "个性化",
+    "personalization.collapse": "收起个性化面板",
     "personalization.reset": "恢复默认",
     "personalization.resetJoin": "、",
     "personalization.resetConfirm": "以下设置将恢复为出厂默认：\n{fields}\n此操作立即生效，确认继续吗？",
@@ -167,6 +168,7 @@ export const DICTS = {
     "update.phase.rollback": "Update failed; restoring the previous version…",
     // Personalization surface (1.0.0)
     "personalization.title": "Personalize",
+    "personalization.collapse": "Collapse personalization panel",
     "personalization.reset": "Restore defaults",
     "personalization.resetJoin": ", ",
     "personalization.resetConfirm": "These settings will be reset to factory defaults:\n{fields}\nThis takes effect immediately. Continue?",

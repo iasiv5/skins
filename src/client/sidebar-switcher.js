@@ -9,39 +9,113 @@ const TAG_ID = "dsh-skins/sidebar.css";
 const SWEEP_MS = 200;
 
 /**
- * Height sweep across gear expand/collapse/retarget (field issue #13). The
- * shell's height is content-driven (auto → auto), so `transition: height`
- * alone never interpolates and every toggle snapped the box to its new
- * height in a single frame — on expansion the whole list column jumped up
- * while the width was still animating (the visible "bounce"; collapse only
- * masked it because there the snap rode the width motion in the same beat).
- * Pin the pre-toggle height, then release it into a height transition toward
- * the post-toggle height so the box grows on the SAME beat as its width.
+ * Height+width sweep across gear expand/collapse/retarget (field issue #13,
+ * revised after the 18+-image gallery report). The shell's box is
+ * content-driven (auto→auto), so `transition: height` alone never
+ * interpolates and every toggle snapped the box to its new height in a
+ * single frame — on expansion the whole list column jumped up while the
+ * width was still animating (the visible "bounce"; collapse only masked it
+ * because there the snap rode the width motion in the same beat).
+ *
+ * The first cut pinned the pre-toggle height and swept toward a target read
+ * off the POST-COMMIT layout — but that layout was measured while the width
+ * transition still sat at progress 0: the panel column, squeezed between the
+ * 360px list column and the not-yet-grown shell, was ~0px wide, so its
+ * content (labels, inputs, thumbs) stacked vertically and the measured
+ * extent was wildly inflated. The sweep either no-op'd (target ≈ from while
+ * the panel was squashed) or overshot toward the clamp ceiling — and when
+ * the pin released, the box snapped from the inflated target down to its
+ * true resting height. That one-frame drop is the residual open-direction
+ * bounce, and its size varied with gallery fill (0/6/12/18+ images all
+ * produced different drop magnitudes) because the inflation grows with
+ * panel content. Collapse stayed smooth by accident: the panel is already
+ * unmounted and the list column is a fixed 360px, so the measured target
+ * happened to equal the resting height regardless of width.
+ *
+ * The revision therefore freezes transitions BEFORE the first post-commit
+ * recalc, letting the wide-class width apply instantly so the content is
+ * measured at its SETTLED geometry. It then pins BOTH axes back to the
+ * pre-toggle box, and releases width+height into one eased beat toward the
+ * final box. The sweep target now equals the natural resting height for ANY
+ * gallery size — empty, 6, 12, 18 or past the "还有 N 张未显示" fold — so
+ * the release never snaps.
+ *
+ * Second residual (the "slight" open jitter after the target was fixed):
+ * during the width beat the panel column was squeezed from ~0px to full
+ * width, so its visibly fading content reflowed continuously — thumbs
+ * growing, text rewrapping — against the dead-still list column. The sweep
+ * therefore also holds the panel column at its settled width (measured at
+ * the frozen layout, carried in a CSS var, applied by the sweeping class in
+ * the wide row layout only) and lets the box growth act as a pure
+ * clip-reveal: the panel's geometry is final from frame 0, and only the
+ * clip window, the box height and the entrance opacity animate.
+ *
  * Returns a cleanup that releases the pin (safe to call twice).
  */
-export function sweepShellHeight(shell, { from, maxHeight, duration = SWEEP_MS } = {}) {
+export function sweepShellHeight(shell, { from, fromWidth, maxHeight, duration = SWEEP_MS } = {}) {
   if (!shell || typeof from !== "number" || !Number.isFinite(from)) return () => {};
   if (typeof shell.getBoundingClientRect !== "function") return () => {};
   const reduced = typeof window.matchMedia === "function"
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduced) return () => {};
+  // Freeze before the first post-commit recalc: the class flip applies
+  // instantly (no transition has started yet to race with), so the box can
+  // be measured at its settled width. The previous inline transition, if
+  // any, is restored whenever nothing needs animating.
+  const prevTransition = shell.style.transition;
+  shell.style.transition = "none";
+  const finalRect = shell.getBoundingClientRect();
+  const toWidth = finalRect.width;
   // Post-commit box: the clamped layout height and the unclamped content
   // extent — the sweep's target is the clamp ceiling, not the content.
-  const rect = shell.getBoundingClientRect();
-  const content = Math.max(rect.height, shell.scrollHeight || 0);
+  const content = Math.max(finalRect.height, shell.scrollHeight || 0);
   const target = typeof maxHeight === "number" ? Math.min(content, maxHeight) : content;
-  if (!Number.isFinite(target) || Math.abs(target - from) < 1) return () => {};
+  const startWidth = typeof fromWidth === "number" && Number.isFinite(fromWidth)
+    ? fromWidth
+    : toWidth; // retarget/resize sweeps keep the width pinned to the box
+  const heightDelta = Math.abs(target - from);
+  const widthDelta = Math.abs(toWidth - startWidth);
+  if (!Number.isFinite(target) || (heightDelta < 1 && widthDelta < 1)) {
+    // Never leak the freeze. Real CSSStyleDeclarations read "" when the
+    // inline property is unset, so the restore-assignment clears it; only
+    // plain-object test doubles read undefined, and those delete instead.
+    if (prevTransition === undefined) delete shell.style.transition;
+    else shell.style.transition = prevTransition;
+    return () => {};
+  }
   const release = () => {
     shell.style.height = "";
+    shell.style.width = "";
     shell.style.transition = "";
-    shell.style.overflowY = "";
+    shell.style.overflow = "";
+    shell.style.removeProperty?.("--dsh-skins-sweep-panel-basis");
+    shell.classList?.remove?.("dsh-skins-sweeping");
   };
+  // Hold the panel column at its SETTLED width for the morph: measured here
+  // at the frozen settled layout, then pinned via the sweeping class (fixed
+  // basis, no shrink) so the panel's content never reflows mid-flight — the
+  // box growth becomes a pure clip-reveal. Without the hold, the column is
+  // squeezed from ~0px to full width while the entrance animation fades it
+  // in, and the visibly fading content squirms (thumbs growing, text
+  // rewrapping) against the dead-still list column — the residual open-
+  // direction jitter. The CSS var carries the measured width; the class
+  // only bites in the wide row layout (desktop media query).
+  const panelColumn = shell.querySelector?.(".dsh-skins-pz-panel") ?? null;
+  const panelBasis = panelColumn === null ? 0 : panelColumn.getBoundingClientRect().width;
   // The inline transition REPLACES the stylesheet's width-only transition —
   // it must restate width, or the box would snap horizontally mid-sweep.
-  shell.style.transition = `width ${duration}ms ease-out, height ${duration}ms ease-out`;
+  // Both axes are pinned first (the class already says "final", so width
+  // would otherwise jump pre-paint), then released together on one beat.
+  shell.classList?.add?.("dsh-skins-sweeping"); // clip-reveal: no scrollbars while clamped
+  if (panelBasis > 0) {
+    shell.style.setProperty?.("--dsh-skins-sweep-panel-basis", `${Math.round(panelBasis * 100) / 100}px`);
+  }
   shell.style.height = `${from}px`;
-  shell.style.overflowY = "hidden"; // no transient scrollbar while clamped
-  void shell.offsetHeight; // commit the pin as the transition's from-value
+  shell.style.width = `${startWidth}px`;
+  shell.style.overflow = "hidden";
+  void shell.offsetHeight; // commit the pins as the transition's from-values
+  shell.style.transition = `width ${duration}ms ease-out, height ${duration}ms ease-out`;
+  shell.style.width = `${toWidth}px`;
   shell.style.height = `${target}px`;
   let done = false;
   const finish = () => {
@@ -106,6 +180,15 @@ const CSS = [
   '.dsh-skins-pop-card-row .dsh-skins-pop-card{flex:1;min-width:0}',
   '.dsh-skins-pz-gear{position:relative;flex:none;align-self:center;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
   '.dsh-skins-pz-gear:hover,.dsh-skins-pz-gear:focus-visible,.dsh-skins-pz-gear.touch{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover)}',
+  // Expanded state (declared after the hover rule so the brand tint wins
+  // while hovering too): the gear IS the panel toggle — make that legible in
+  // both states, same visual language as the selected skin card.
+  '.dsh-skins-pz-gear[aria-expanded="true"]{opacity:1;border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-module-platform)}',
+  // Panel header collapse control (v1.0.0 ruling): ghost icon button in the
+  // gear's visual language; collapses the PANEL only, never the shell.
+  '.dsh-skins-pz-collapse{flex:none;align-self:center;width:28px;height:28px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.75;transition:opacity .15s}',
+  '.dsh-skins-pz-collapse:hover,.dsh-skins-pz-collapse:focus-visible{opacity:1;border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover)}',
+  '.dsh-skins-pz-collapse svg{width:14px;height:14px}',
   '.dsh-skins-pz-gear svg{width:16px;height:16px}',
   // Deep dark surfaces: openbmc/uefi/tgcf tint the bg-overlay token with
   // their own families, but in the OFFICIAL skin no token override exists
@@ -117,7 +200,12 @@ const CSS = [
   '.dsh-skins-pop.dsh-skins-wide{flex-direction:row;align-items:stretch;width:min(1105px,calc(100vw - 24px))}',
   '.dsh-skins-pop-main{display:flex;flex-direction:column;gap:8px;min-width:0;width:360px;flex:none}',
   '.dsh-skins-pop.dsh-skins-wide .dsh-skins-pop-main{flex:0 0 360px}',
-  '.dsh-skins-pz-panel{flex:0 1 700px;min-width:0;display:flex;flex-direction:column;gap:10px;padding-left:14px;border-left:1px solid var(--dsw-alias-border-l2);overflow-x:hidden;transform:translateX(16px);opacity:0;animation:dsh-skins-pz-in .2s ease-out forwards}',
+  // box-sizing is NOT inherited: without border-box here, the sweep's
+  // measured rect width feeds flex-basis as a CONTENT width (+15px padding/
+  // border), so the panel would sit 15px wide through the morph and snap
+  // back at release — border-box makes the measured rect and the basis the
+  // same quantity.
+  '.dsh-skins-pz-panel{box-sizing:border-box;flex:0 1 700px;min-width:0;display:flex;flex-direction:column;gap:10px;padding-left:14px;border-left:1px solid var(--dsw-alias-border-l2);overflow-x:hidden;transform:translateX(16px);opacity:0;animation:dsh-skins-pz-in .2s ease-out forwards}',
   '@keyframes dsh-skins-pz-in{to{transform:none;opacity:1}}',
   '@media (prefers-reduced-motion:reduce){.dsh-skins-pz-panel{animation:none;transform:none;opacity:1}.dsh-skins-pop{transition:none}}',
   '@media (max-width:904px){.dsh-skins-pop.dsh-skins-wide{flex-direction:column;width:min(390px,calc(100vw - 24px))}.dsh-skins-pz-panel{flex-basis:auto;padding-left:0;border-left:0;border-top:1px solid var(--dsw-alias-border-l2);padding-top:12px;transform:translateY(12px)}.dsh-skins-pop.dsh-skins-wide .dsh-skins-pz-panel{overflow-y:visible}}',
@@ -160,6 +248,21 @@ const CSS = [
   // -- field issue #2: library cell corner-badges, sticky action bar,
   //    and a dedicated scroll region for the panel column ---------------
   '.dsh-skins-wide .dsh-skins-pz-panel{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}',
+  // While the shell is mid-sweep its height is pinned below the panel's
+  // content extent, so scrollbars would flash on for the ~200ms of the
+  // morph: the whole shell clips (both axes — the panel column is held wide
+  // and overflows horizontally during the reveal), and the panel column's
+  // own scrollbar is clipped too. Equal specificity with the wide scroll
+  // rule and declared after it, so wide mode clips during the sweep; the
+  // stacked (<904px) override keeps its higher specificity and still wins.
+  '.dsh-skins-sweeping{overflow:hidden}',
+  '.dsh-skins-sweeping .dsh-skins-pz-panel{overflow-y:hidden}',
+  // Clip-reveal hold (issue #13 rev. 2): the panel column stays at its
+  // settled width for the whole beat — measured into the CSS var by the
+  // sweep — so its content never reflows while it fades in. Desktop wide
+  // row layout only; in the stacked column layout a fixed flex-basis would
+  // be a HEIGHT, and the stacked panel never reflows horizontally anyway.
+  '@media (min-width:905px){.dsh-skins-sweeping.dsh-skins-wide .dsh-skins-pz-panel{flex:0 0 var(--dsh-skins-sweep-panel-basis,700px)}}',
   '.dsh-skins-pz-cell{position:relative;display:block}',
   '.dsh-skins-pz-cell .dsh-skins-pz-thumb{width:100%}',
   '.dsh-skins-pz-del{position:absolute;top:4px;right:4px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font:inherit;font-size:14px;line-height:1;cursor:pointer}',
@@ -263,14 +366,16 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     const [themePreference, setThemePreference] = react.useState(() => ctx.theme?.getTheme?.().preference ?? "system");
     const buttonRef = react.useRef(null);
     const shellRef = react.useRef(null);
-    const shellHeightRef = react.useRef(null);
+    const shellSizeRef = react.useRef(null);
 
-    // Capture the shell's current height during render — i.e. BEFORE React
-    // mutates the DOM for this render — so the height sweep (layout effect
-    // below) knows the box's pre-toggle height. Reading layout here is fine:
-    // this component re-renders only on discrete user/state events.
+    // Capture the shell's current box (width AND height) during render — i.e.
+    // BEFORE React mutates the DOM for this render — so the size sweep
+    // (layout effect below) knows the box's pre-toggle geometry on both
+    // axes. Reading layout here is fine: this component re-renders only on
+    // discrete user/state events.
     if (open && shellRef.current && typeof shellRef.current.getBoundingClientRect === "function") {
-      shellHeightRef.current = shellRef.current.getBoundingClientRect().height;
+      const rect = shellRef.current.getBoundingClientRect();
+      shellSizeRef.current = { width: rect.width, height: rect.height };
     }
 
     // Closing the shell clears the panel state. Auto-save lives in the
@@ -286,6 +391,15 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
       setOpen(false);
       // The gear unmounts with the shell; focus lands on the persistent trigger.
       buttonRef.current?.focus?.();
+    };
+
+    // Collapse the panel back into the skin list WITHOUT dismissing the
+    // shell — the same move as clicking the expanded gear. Focus returns to
+    // that gear so keyboard users keep their place; the panel header's
+    // collapse control routes here too (v1.0.0 ruling).
+    const collapsePanel = (skinId) => {
+      setPersonalizeId(null);
+      try { document.getElementById(`${skinId}-gear`)?.focus?.(); } catch {}
     };
 
     react.useEffect(() => {
@@ -379,8 +493,7 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           onClick: () => {
             if (personalizeId === skin.id) {
               // Collapse: focus returns to the gear.
-              setPersonalizeId(null);
-              try { document.getElementById(`${skin.id}-gear`)?.focus?.(); } catch {}
+              collapsePanel(skin.id);
               return;
             }
             // Opening (or re-targeting) the panel selects the skin so edits
@@ -411,15 +524,21 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
     const shellMaxHeight = box === null || typeof window === "undefined" || typeof window.innerHeight !== "number"
       ? undefined
       : Math.max(220, window.innerHeight - box.bottom - 12);
-    // Post-commit, pre-paint: pin the pre-toggle height and sweep to the new
-    // one on the width's beat (field issue #13 — see sweepShellHeight).
+    // Post-commit, pre-paint: pin the pre-toggle box and sweep BOTH axes to
+    // the settled one on a single beat (field issue #13, revised — see
+    // sweepShellHeight for why the target must be measured at the final
+    // width, not at the width transition's progress-0 layout).
     react.useLayoutEffect(() => {
       if (!open || box === null) return undefined;
       const shell = shellRef.current;
       if (!shell) return undefined;
-      const from = shellHeightRef.current;
-      shellHeightRef.current = null;
-      return sweepShellHeight(shell, { from, maxHeight: shellMaxHeight }) ?? undefined;
+      const size = shellSizeRef.current;
+      shellSizeRef.current = null;
+      return sweepShellHeight(shell, {
+        from: size?.height,
+        fromWidth: size?.width,
+        maxHeight: shellMaxHeight,
+      }) ?? undefined;
     }, [open, showPersonalization, personalizeId, shellMaxHeight]);
     const panel = open && box && typeof document !== "undefined"
       ? reactDom.createPortal(jsx("div", {
@@ -440,7 +559,10 @@ export function installSidebarSwitcher(ctx, { runtime, jsx, react, reactDom, con
           showPersonalization ? jsx("div", {
             key: "panel", className: "dsh-skins-pz-panel",
             role: "region", "aria-label": localeTranslate("personalization.panelLabel"),
-            children: jsx(PersonalizationPanel, { skinId: personalizeId }),
+            children: jsx(PersonalizationPanel, {
+              skinId: personalizeId,
+              onCollapse: () => collapsePanel(personalizeId),
+            }),
           }) : null,
         ],
       }), document.body)

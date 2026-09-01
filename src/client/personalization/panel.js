@@ -12,7 +12,10 @@
  *   - 恢复默认 resets every field to factory defaults and flushes at once;
  *   - the wallpaper section merges built-in choices and the user library in
  *     one grid; library add/remove is immediate (asset path, like all writes);
- *   - the panel owns no close button and no confirmation flows.
+ *   - the header row hosts a collapse control (v1.0.0 ruling) that folds the
+ *     panel back into the skin list — it never closes the shell itself, and
+ *     focus returns to the gear that opened it (the switcher owns that move);
+ *   - the panel owns no shell-close button and no confirmation flows.
  */
 
 import {
@@ -281,7 +284,26 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
 
   // ---- the panel ------------------------------------------------------------
 
-  return function PersonalizationPanel({ skinId }) {
+  // Panel-collapse glyph: a double chevron pointing LEFT — the direction the
+  // panel's edge actually travels when it folds back into the skin list
+  // (motion-consistent; a right-pointing arrow read as "expand", field
+  // report). Explicit `L` commands with spaces are REQUIRED here: the
+  // compact `M11 6-6 6…` form (implicit lineto after moveto, sign-separated)
+  // mis-tokenizes in Chromium — the pair's y is swallowed and the chevron
+  // collapses into a horizontal bar (field report: "乱码"). The affordance
+  // collapses the PANEL, not the shell — click-outside/Esc remain the shell
+  // dismissers.
+  function CollapseIcon() {
+    return jsx("svg", {
+      viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true",
+      children: jsx("path", {
+        d: "M17 6 L11 12 L17 18 M11 6 L5 12 L11 18",
+        stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round",
+      }),
+    });
+  }
+
+  return function PersonalizationPanel({ skinId, onCollapse }) {
     const state = useConfigState();
     const schema = getSkinSchema(skinId);
     const headerRef = useRef(null);
@@ -360,11 +382,25 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
     }
 
     return jsx("div", { className: "dsh-skins-pz", children: [
-      jsx("div", {
-        ref: headerRef, className: "dsh-skins-pop-title",
-        tabIndex: -1, role: "heading", "aria-level": 2,
-        children: `${tr("personalization.title")} · ${labelFor(skinId)}`,
-      }),
+      // Header row (`.dsh-skins-pz-head`): the heading stays the focus
+      // target (issue #12); the collapse control sits at its right end so
+      // folding the panel back is discoverable where the user is looking —
+      // the gear that opened it is a full column away (user ruling).
+      jsx("div", { className: "dsh-skins-pz-head", children: [
+        jsx("div", {
+          ref: headerRef, className: "dsh-skins-pop-title",
+          tabIndex: -1, role: "heading", "aria-level": 2,
+          children: `${tr("personalization.title")} · ${labelFor(skinId)}`,
+        }),
+        onCollapse ? jsx("button", {
+          type: "button",
+          className: "dsh-skins-pz-collapse",
+          "aria-label": tr("personalization.collapse"),
+          title: tr("personalization.collapse"),
+          onClick: onCollapse,
+          children: jsx(CollapseIcon, {}),
+        }) : null,
+      ] }),
       ...fieldRows,
       jsx("div", { className: "dsh-skins-pz-actions", children: [
         jsx("div", { className: "dsh-skins-pz-cluster dsh-skins-pz-cluster-status", children: statusCluster }),
