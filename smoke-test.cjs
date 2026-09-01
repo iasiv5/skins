@@ -401,9 +401,28 @@ console.log("✓ switched to independent UEFI Harness via public selector; backd
 if (document.title !== "标题实验 — UEFI Harness") throw new Error("uefi mount must rebrand the session-aware tab title, got " + document.title);
 console.log("✓ UEFI body scope attr after switch:", body.dataset.dshUefiHarness === "");
 
+// ---- openbmc: personalization-aware since ADR-0004, default-anchor check ----
+// UEFI → openbmc switch: the default-P projection must reproduce the baked
+// visuals byte-for-byte (P=55 anchors to the baked alpha strings).
+mod.selectSkin("openbmc");
+if (window.__DSH_SKINS__.active() !== "openbmc") throw new Error("openbmc must become active");
+if (body.dataset.dshOpenbmcSkin !== "") throw new Error("openbmc body scope attr missing");
+const obmcThemeLayer = ctx.theme._layers.get("dsh-skins/openbmc");
+if (!obmcThemeLayer) throw new Error("openbmc must register a token override layer (ADR-0004)");
+if (typeof obmcThemeLayer["--dsw-alias-bg-base"].light !== "string" || !obmcThemeLayer["--dsw-alias-bg-base"].light.startsWith("rgba(247, 250, 252,")) {
+	throw new Error("panel opacity must derive translucent panel bases at the default P=55");
+}
+const obmcBackdrop = styleTag("openbmc.backdrop");
+if (!obmcBackdrop || obmcBackdrop.removed) throw new Error("openbmc backdrop stylesheet missing");
+if (!obmcBackdrop.textContent.includes("linear-gradient(rgba(247, 250, 252, 0.15)")) throw new Error("openbmc default scrim must equal the baked string at P=55");
+const obmcCss = styleTag("openbmc");
+if (!obmcCss || obmcCss.removed) throw new Error("openbmc static css missing");
+if (obmcCss.textContent.includes("backdrop-filter")) throw new Error("no glass rule at the default P=55 (blur 0)");
+console.log("✓ openbmc active: baked-default token layer + backdrop + no glass at default P");
+
 // ---- tgcf: personalization-aware skin, token layer + backdrop + hot-update ----
-// Direct UEFI → TGCF switch (no official detour): teardown-first mounting
-// restores the official brand segment before tgcf rebrands it.
+// Direct UEFI → openbmc → TGCF switch (no official detour): teardown-first
+// mounting restores the official brand segment before tgcf rebrands it.
 mod.selectSkin("tgcf");
 if (window.__DSH_SKINS__.active() !== "tgcf") throw new Error("tgcf must become active");
 if (body.dataset.dshTgcfSkin !== "") throw new Error("tgcf body scope attr missing");
