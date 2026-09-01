@@ -238,10 +238,12 @@ test("N1: selecting a skin that cannot project keeps the current skin", () => {
   assert.ok(dom.styleTag("dsh-skins/tgcf.backdrop.css"));
 });
 
-test("factory-skin switch keeps every stored selection intact (resolveSelectedId contract)", () => {
-  // Product promise: making meirenzhi the FIRST registered skin only affects
-  // users with NO stored choice. Registration order must never override an
-  // existing selection, and only a stale/invalid stored id falls through.
+// Product promise under test: making meirenzhi the FIRST registered skin only
+// affects users with NO stored choice. Each case boots a FRESH DOM/storage/
+// runtime (apply's official branch never unmounts a previous mount, so cases
+// must not share a runtime — execution-review N1) and calls apply() ONCE, the
+// way a real browser boot would.
+function bootWithStoredChoice(stored) {
   const dom = installDom();
   const runtime = createSkinRuntime();
   const meirenzhi = createMeirenzhiSkin(stubJsx);
@@ -249,20 +251,42 @@ test("factory-skin switch keeps every stored selection intact (resolveSelectedId
   runtime.register(meirenzhi);
   runtime.register(openbmc);
   runtime.setPersonalization(personalizationFor(new Map([["meirenzhi", meirenzhi], ["openbmc", openbmc]])));
-  const ctx = makeCtx();
+  dom.storage.setItem("dsh-skins:active", stored);
+  const dispose = runtime.apply(makeCtx());
+  return { dom, runtime, dispose };
+}
 
-  // A user who already chose openbmc keeps it.
-  dom.storage.setItem("dsh-skins:active", "openbmc");
-  runtime.apply(ctx);
-  assert.equal(runtime.active(), "openbmc");
+test("stored selections survive the factory-skin switch (resolveSelectedId contract)", () => {
+  // A user who already chose openbmc keeps it — OpenBMC really mounts.
+  {
+    const { dom, runtime, dispose } = bootWithStoredChoice("openbmc");
+    assert.equal(runtime.active(), "openbmc");
+    assert.equal(dom.document.body.dataset.dshOpenbmcSkin, "");
+    assert.ok(dom.styleTag("dsh-skins/openbmc.css"), "openbmc must be the mounted skin");
+    dispose();
+    assert.equal(dom.document.body.dataset.dshOpenbmcSkin, undefined, "dispose removes the scope attr");
+  }
 
-  // The compatibility alias "official" also wins over the factory skin.
-  dom.storage.setItem("dsh-skins:active", "official");
-  runtime.apply(ctx);
-  assert.equal(runtime.active(), "official");
+  // A stored canonical `official` choice wins over the factory skin and
+  // mounts NOTHING custom (the legacy alias is `default`, normalized inside
+  // resolveSelectedId; `official` itself is the canonical id).
+  {
+    const { dom, runtime, dispose } = bootWithStoredChoice("official");
+    assert.equal(runtime.active(), "official");
+    assert.equal(dom.document.body.dataset.dshMeirenzhiSkin, undefined);
+    assert.equal(dom.document.body.dataset.dshOpenbmcSkin, undefined);
+    assert.equal(dom.styleTag("dsh-skins/meirenzhi.css"), null, "no meirenzhi style tag on official boot");
+    assert.equal(dom.styleTag("dsh-skins/openbmc.css"), null, "no openbmc style tag on official boot");
+    dispose();
+  }
 
   // Only a stale/invalid stored value falls through to the factory skin.
-  dom.storage.setItem("dsh-skins:active", "not-a-skin");
-  runtime.apply(ctx);
-  assert.equal(runtime.active(), "meirenzhi");
+  {
+    const { dom, runtime, dispose } = bootWithStoredChoice("not-a-skin");
+    assert.equal(runtime.active(), "meirenzhi");
+    assert.equal(dom.document.body.dataset.dshMeirenzhiSkin, "");
+    assert.ok(dom.styleTag("dsh-skins/meirenzhi.css"), "meirenzhi must be the mounted skin");
+    dispose();
+    assert.equal(dom.document.body.dataset.dshMeirenzhiSkin, undefined, "dispose removes the scope attr");
+  }
 });

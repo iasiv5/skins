@@ -2,8 +2,8 @@
 
 ## 背景与共识来源
 
-- 设计过程：`/grill-with-docs` 两轮问答（2026-09-01），随后三轮外部评审修订；执行契约见
-  `docs/plans/2026-09-01-meirenzhi-skin-implementation-plan.md`（v2.2）。
+- 设计过程：`/grill-with-docs` 两轮问答（2026-09-01），随后四轮外部评审修订；执行契约见
+  `docs/plans/2026-09-01-meirenzhi-skin-implementation-plan.md`（v2.3）。
 - 素材方案裁决（产品负责人，2026-09-01）：**方案 B 质量优先**——固定 `scale=2560:-2` +
   libwebp `-quality 80`，不做逐图降质、不回退宽度；字节护栏仅作源图漂移检测
   （单张 ≤640,000 B、合计 ≤4,700,000 B，实测 4,539,816 B）。
