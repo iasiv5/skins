@@ -235,12 +235,12 @@ if (!enKeys.some((key) => key.startsWith("host."))) throw new Error("en dict mus
 console.log("✓ zh/en dictionaries at parity (" + zhKeys.length + " keys, host.* errors localized)");
 
 // localized skin metadata: descriptions follow the active UI locale
-if (!String(mod.listSkins().find((s) => s.id === "openbmc").description).includes("绶带凌风")) throw new Error("zh skin description missing");
+if (!String(mod.listSkins().find((s) => s.id === "openbmc").description).includes("冰绡叠浪")) throw new Error("zh skin description missing");
 activeLocale = "en";
 const openbmcEn = mod.listSkins().find((s) => s.id === "openbmc");
 const uefiEn = mod.listSkins().find((s) => s.id === "uefi-harness");
-if (!openbmcEn.description.includes("Ribbon mark") || openbmcEn.description.includes("飘带")) throw new Error("en openbmc description missing: " + openbmcEn.description);
-if (!uefiEn.description.includes("Cube mark") || uefiEn.description.includes("固件") || uefiEn.description.includes("占位")) throw new Error("en uefi description missing: " + uefiEn.description);
+if (!openbmcEn.description.includes("Ice-silk waves") || openbmcEn.description.includes("飘带")) throw new Error("en openbmc description missing: " + openbmcEn.description);
+if (!uefiEn.description.includes("Violet spark") || uefiEn.description.includes("固件") || uefiEn.description.includes("占位")) throw new Error("en uefi description missing: " + uefiEn.description);
 activeLocale = "zh";
 
 // unified card style: every description is a "mark · backdrop · palette" triple

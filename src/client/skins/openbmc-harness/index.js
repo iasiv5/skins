@@ -1750,8 +1750,8 @@ export function createOpenBmcHarness(jsxRuntime) {
     id: "openbmc",
     label: "OpenBMC Harness",
     description: {
-      zh: "绶带凌风 · 风雷入画 · 缥碧盈卷",
-      en: "Ribbon mark · storm-wing backdrop · ice-blue palette",
+      zh: "冰绡叠浪 · 风雷入画 · 缥碧盈卷",
+      en: "Ice-silk waves · storm-wing backdrop · ice-blue palette",
     },
     bodyAttr: "dshOpenbmcSkin",
     Mark: OpenBmcMark,

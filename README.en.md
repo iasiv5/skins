@@ -58,9 +58,9 @@ This section answers: which skins exist and what each feels like.
 
 | Choice ID | Kind | Description |
 |---|---|---|
-| `official` | built-in option | DeepSeek mark · default backdrop · brand palette |
+| `official` | built-in option | Plain paper & dark ink · breathing white space · naturally itself |
 | `openbmc` | full skin | Ribbon mark · storm-wing backdrop · ice-blue palette |
-| `uefi-harness` | placeholder skin | Cube mark · gilded backdrop · violet-blue palette |
+| `uefi-harness` | placeholder skin | Violet spark · gilded backdrop · violet-blue palette |
 | `tgcf` | full skin | A thousand lights · vermilion & gold · night shared bright |
 
 - `official` restores the official DeepSeek Harness branding, backdrop and favicon, while keeping the skin switcher and the official light/dark palettes.
