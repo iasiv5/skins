@@ -340,7 +340,11 @@ test("the REAL tgcf factory projects single scrim, static palette and static fav
   // Colors are baked into the skin (the fields are gone but the identity is not).
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-primary"], { light: "#C3272B", dark: "#E0564A" });
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-brand-text"], { light: "#C9A227", dark: "#D4AF37" });
-  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-bubble"], { light: "#C3272B", dark: "#8E2A2F" });
+  // User bubble (2026-09-01 ruling): vermilion stays the theme family, but
+  // light mode drops to a soft wash (dark text on the pale glass) while dark
+  // keeps the deep vermilion fill; highlight rides the same families.
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-bubble"], { light: "rgba(195, 39, 43, 0.10)", dark: "#8E2A2F" });
+  assert.deepEqual(result.effects.tokenOverrides["--dsw-specific-bubble-highlight"], { light: "rgba(195, 39, 43, 0.18)", dark: "rgba(170, 55, 60, 0.92)" });
   // Control states tint with the vermilion family (ruling #16).
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-interactive-bg-hover"], { light: "rgba(195,39,43,0.08)", dark: "rgba(224,86,74,0.14)" });
   assert.deepEqual(result.effects.tokenOverrides["--dsw-alias-bg-overlay"], { light: "rgba(255,252,246,0.82)", dark: "rgba(24,16,16,0.88)" });

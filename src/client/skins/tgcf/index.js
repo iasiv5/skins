@@ -76,8 +76,16 @@ const SIDEBAR_DELTA = { light: 0.05, dark: 0.17 };
 const PALETTE = {
   accent: { light: "#C3272B", dark: "#E0564A" },
   gold: { light: "#C9A227", dark: "#D4AF37" },
-  bubble: { light: "#C3272B", dark: "#8E2A2F" },
 };
+
+/**
+ * 用户气泡（产品主人裁决 2026-09-01：保持题材红色系，但参照 openbmc/uefi 的
+ * 双 token 结构降饱和）——浅色态：朱红轻透纱（深字，融进素白玻璃，不再饱和
+ * 红实底）；深色态：深朱红实底保留（亮字，墨黑玻璃上的主题主色）。
+ * highlight 为流式/悬停高亮层，随同族提亮一档。
+ */
+const BUBBLE = { light: "rgba(195, 39, 43, 0.10)", dark: "#8E2A2F" };
+const BUBBLE_HIGHLIGHT = { light: "rgba(195, 39, 43, 0.18)", dark: "rgba(170, 55, 60, 0.92)" };
 
 export function createTgcfSkin(jsxRuntime) {
   const { jsx } = jsxRuntime;
@@ -213,7 +221,8 @@ export function createTgcfSkin(jsxRuntime) {
         "--dsw-specific-input-major": { light: panelBase(true, composerAlpha.light), dark: panelBase(false, composerAlpha.dark) },
         "--dsw-specific-sidebar-nav-item-hover": { light: "rgba(255,252,246,0.6)", dark: "rgba(24,16,16,0.6)" },
         "--dsw-specific-sidebar-nav-item-active": { light: "rgba(255,252,246,0.9)", dark: "rgba(24,16,16,0.9)" },
-        "--dsw-specific-bubble": PALETTE.bubble,
+        "--dsw-specific-bubble": BUBBLE,
+        "--dsw-specific-bubble-highlight": BUBBLE_HIGHLIGHT,
       },
       cssVariables: {
         // The panel-glass frost (static CSS consumes the var) rides the same
