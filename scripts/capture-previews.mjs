@@ -18,16 +18,20 @@
  * Usage:
  *   node scripts/capture-previews.mjs --probe                 # inspect only
  *   node scripts/capture-previews.mjs                         # full capture
- *   node scripts/capture-previews.mjs --skin tgcf --gate      # release gate assertions
+ *   node scripts/capture-previews.mjs --skin tgcf --gate      # release gate assertions, local evidence
+ *   node scripts/capture-previews.mjs --skin tgcf --out docs/assets # intentional docs update
  * Options:
  *   --url <base>   default http://127.0.0.1:3080
- *   --out <dir>    default docs/assets
+ *   --out <dir>    explicit output override; full captures default to
+ *                  docs/assets, while --gate defaults to the versioned,
+ *                  gitignored .artifacts/release-gates/v<package version>
  *   --skin <id>    default openbmc (output names follow the skin id)
  *   --gate         run the semi-automated release-gate assertions and exit
  */
 import { chromium } from "playwright-core";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveCaptureOutDir } from "./capture-output.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -37,16 +41,22 @@ const option = (name, fallback) => {
 };
 
 const baseUrl = option("--url", "http://127.0.0.1:3080");
-const outDir = option("--out", "docs/assets");
 const skin = option("--skin", "openbmc");
 const probe = flag("--probe");
 const gate = flag("--gate");
+const packageVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+const outDir = resolveCaptureOutDir({
+  gate,
+  explicitOut: option("--out", undefined),
+  packageVersion,
+});
 
 const VIEWPORT = { width: 1600, height: 1000 };
 const WEBP_QUALITY = 0.82;
 
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
 mkdirSync(outDir, { recursive: true });
+console.log(`${gate ? "release-gate evidence" : "capture output"} -> ${outDir}`);
 
 /** Convert a PNG buffer to WebP through an in-page canvas (no extra deps). */
 async function toWebp(page, pngBuffer, quality = WEBP_QUALITY) {
@@ -199,10 +209,10 @@ if (probe) {
 }
 
 // ---- gate: semi-automated release assertions (design §13) ----
-// Run against a GUI with the 1.0.0 plugin installed:
+// Run against a GUI with the candidate plugin installed:
 //   node scripts/capture-previews.mjs --skin tgcf --gate
-/** Privacy gate shared by --gate and the full capture (R13): every frame
- *  written to docs/assets must pass through this preparation. */
+/** Privacy gate shared by --gate and the full capture (R13): every captured
+ *  evidence frame must pass through this preparation. */
 async function preparePrivateCapture(page) {
   const started = await startEmptySession(page);
   if (!started) console.warn("WARN: New Session button not found — conversation area may show existing content.");
@@ -294,7 +304,7 @@ if (gate) {
   const favicon = await gpage.locator('link[rel="icon"]').first().getAttribute("href");
   check(typeof favicon === "string" && favicon.length > 0, "static skin favicon present");
 
-  // 5. Personalization panel shot for records (docs/assets/<skin>-personalize).
+  // 5. Personalization panel shot for records (under the resolved output directory).
   // Lifecycle: the panel from step 3's openPanel() is STILL OPEN here — the
   // old code unconditionally called openSwitcher() again, which TOGGLED the
   // shell closed (the trigger is a toggle) and raced the gear click against

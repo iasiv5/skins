@@ -82,7 +82,7 @@ pnpm run watch     # 监听 src/，分别重建 lib/client.js 与 lib/index.js
 
 - 客户端 bundle 经 DSH HMR 热更新；Host 源码、`package.json`、`cordis.patch.yml` 或依赖变化后需重启 DSH Web。
 - 提交前同时提交源码与重新生成的 `lib/` 两个产物。CI 会复查构建、产物无差异与安装包内容。
-- 文档截图用 `node scripts/capture-previews.mjs` 重拍。脚本内置隐私规程：折叠全部工作区、新建空会话取景、界面强制中文，不泄露任何会话内容。
+- 截图脚本内置隐私规程：折叠全部工作区、新建空会话取景、界面强制中文，不泄露任何会话内容。`--gate` 的验收截图默认写到按当前 `package.json.version` 隔离的 `.artifacts/release-gates/v<version>/`（gitignored），只作本地证据，不随 tag 入库；普通捕获仍默认写 `docs/assets`。仅当 README、视觉样式或文档截图引用确实变化时，才显式执行 `node scripts/capture-previews.mjs --skin <id> --out docs/assets` 更新文档图片。发版前运行 `git diff --exit-code -- docs/assets`，无意更新文档截图的版本必须保持该目录零差异。
 - 两份 README（中/英）由校验脚本做内容配对；改动任一侧须同步另一侧，详见 `README.i18n.yaml`。
 
 开发模式安装（本地源码直连，客户端改动即改即见）：
