@@ -17,6 +17,7 @@
 - [ ] `node scripts/capture-previews.mjs --skin meirenzhi --gate` → `GATE PASSED`
 - [ ] `node scripts/capture-previews.mjs --skin openbmc --gate` → `GATE PASSED`
 - [ ] `node scripts/capture-previews.mjs --skin uefi-harness --gate` → `GATE PASSED`
+- [ ] 每次输出含 `personalization evidence frame settled`，且记录 shell ≥600px、panel ≥240px，证明截图不是宽度扫动中的列表-only 瞬间
 - [ ] 目录内恰有四张人工可读证据：`{tgcf,meirenzhi,openbmc,uefi-harness}-personalize.webp`
 - [ ] 人工查看四张证据：目标皮肤、个性化面板、隐私规程均正确，无会话内容泄露
 

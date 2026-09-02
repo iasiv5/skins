@@ -192,6 +192,26 @@ async function writeShot(name, buffer) {
   console.log(`${name}: ${(buffer.length / 1024).toFixed(0)} KiB`);
 }
 
+/** Wait until the docked personalization layout is visibly settled, not merely
+ * mounted in the DOM. This keeps release evidence from capturing the narrow
+ * list-only frame during the shell's width sweep. */
+async function waitForPersonalizationFrame(page) {
+  await page.waitForFunction(() => {
+    const shell = document.querySelector(".dsh-skins-pop.dsh-skins-wide");
+    const panel = document.querySelector(".dsh-skins-pz-panel");
+    if (shell === null || panel === null) return false;
+    const shellRect = shell.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const opacity = Number.parseFloat(getComputedStyle(panel).opacity);
+    return shellRect.width >= 600 && panelRect.width >= 240 && opacity >= 0.99;
+  }, undefined, { timeout: 5_000 });
+  return page.evaluate(() => {
+    const shell = document.querySelector(".dsh-skins-pop.dsh-skins-wide").getBoundingClientRect();
+    const panel = document.querySelector(".dsh-skins-pz-panel").getBoundingClientRect();
+    return { shellWidth: Math.round(shell.width), panelWidth: Math.round(panel.width) };
+  });
+}
+
 if (probe) {
   const { context, page } = await newPage("dark");
   const started = await startEmptySession(page);
@@ -310,6 +330,8 @@ if (gate) {
   // shell closed (the trigger is a toggle) and raced the gear click against
   // the unmounting node. Reuse the open panel instead.
   await gpage.waitForSelector(".dsh-skins-pz-panel", { timeout: 5_000 });
+  const frame = await waitForPersonalizationFrame(gpage);
+  check(true, `personalization evidence frame settled (shell ${frame.shellWidth}px, panel ${frame.panelWidth}px)`);
   await writeShot(`${skin}-personalize.webp`, await toWebp(gpage, await gpage.screenshot()));
   await closeSwitcher(gpage);
 
