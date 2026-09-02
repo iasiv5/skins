@@ -262,8 +262,8 @@ export function createOpenBmcHarness(jsxRuntime) {
   /* ================================================================
    * ⑤ 背景图片 — 固定全视口背景 + 明暗自适应遮罩
    *
-   * TODO: 换成你的电路板/芯片图后，把 BACKGROUND_ART 设为
-   *   "data:image/webp;base64," + "<base64 -w0 my-bg.webp 的输出>"
+   * BACKGROUND_ART 为鎏金电路板原画（1920×1080 WebP，base64 内嵌）。
+   * 若要更换：设为 "data:image/webp;base64," + "<base64 -w0 my-bg.webp 的输出>"
    * （推荐 1920×1080 WebP，100-200KB）。为空时使用下方明暗两套
    * 品牌色氛围渐变占位。
    * ================================================================ */
