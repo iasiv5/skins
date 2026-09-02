@@ -52,6 +52,7 @@ import {
   GLOBAL_MAX_PIXELS,
   getField,
   getSkinSchema,
+  isSameOverrideValue,
   listAssetFields,
   metaSatisfiesField,
   resolveImageRef,
@@ -346,7 +347,9 @@ export function createPersonalizationStore(options = {}) {
         // override (v1.0.0 ruling): older builds could persist one via a
         // default-thumbnail click. Dropping it is lossless for the effective
         // value and lets the field follow future default changes again.
-        if (section[key] === defaults[key]) {
+        // Structural comparison — locale/colorScheme defaults are fresh
+        // objects on every defaultsFor() call, so `===` never fires for them.
+        if (isSameOverrideValue(section[key], defaults[key])) {
           delete section[key];
           removed = true;
         }

@@ -151,6 +151,29 @@ test("on a modified field, clicking the default value arms a delete op (v1.0.0 r
   client.dispose();
 });
 
+test("a locale value equal to the factory default arms a delete op too (v1.0.0 ruling, structural)", async () => {
+  const patches = [];
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patches.push(JSON.parse(init.body));
+      return jsonResponse(200, { revision: 8 });
+    }
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  // tgcf factory slogan is 百无禁忌 / No Taboos. A freshly built {zh, en}
+  // object can never be reference-equal to the catalog default — the
+  // default-equal check must be structural, or this arms a set op and the
+  // store keeps a default-equal "override" forever.
+  client.preview("tgcf", "slogan", { zh: "实验标语", en: "Custom slogan" }); // real override
+  client.preview("tgcf", "slogan", { zh: "百无禁忌", en: "No Taboos" }); // back to factory → delete
+  const result = await client.flushNow();
+  assert.deepEqual(result, { flushed: 1 });
+  assert.deepEqual(patches[0].operations, [{ op: "delete", skinId: "tgcf", key: "slogan" }]);
+  client.dispose();
+});
+
 test("re-clicking the effective value is idempotent and does not re-arm a flush", async () => {
   const fetchImpl = makeFetch((index, url, init) => {
     if (init.method === "PATCH") return jsonResponse(200, { revision: 8 });

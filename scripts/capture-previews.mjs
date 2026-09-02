@@ -254,7 +254,9 @@ if (gate) {
   //    static skin asset since v2.4.1 #5, so the slogan carries this
   //    flow; persistence is asserted through the panel's own synced
   //    input, independent of host DOM.
-  const sloganInput = () => gpage.locator('.dsh-skins-pz-panel input[aria-label="标语 (ZH)"]');
+  // Slogan input: match on the "(ZH)" suffix — the label text itself
+  // ("标语 Slogan") is dict copy and may be reworded.
+  const sloganInput = () => gpage.locator('.dsh-skins-pz-panel input[aria-label$="(ZH)"]');
   // Factory slogans per gate skin: 恢复默认 must land back on the skin's OWN
   // catalog default (complete map — every --skin target is covered).
   const FACTORY_SLOGANS_ZH = {
@@ -276,7 +278,11 @@ if (gate) {
   await preparePrivateCapture(gpage);
   await openPanel();
   check(await sloganInput().inputValue() === "验收实验标语", "auto-save persists across reload");
-  // Cleanup: 恢复默认 flushes the factory values automatically.
+  // Cleanup: 恢复默认 flushes the factory values automatically. Since user
+  // ruling #9 it guards with a window.confirm listing the affected fields —
+  // playwright auto-DISMISSES native dialogs, which would silently no-op the
+  // reset, so accept it explicitly.
+  gpage.once("dialog", (dialog) => dialog.accept());
   await gpage.locator('.dsh-skins-pz-panel button', { hasText: "恢复默认" }).click();
   await gpage.waitForTimeout(1200);
   await gpage.reload();

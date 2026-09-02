@@ -74,6 +74,10 @@ test("load-time normalization drops overrides equal to the factory default (v1.0
     skins: { tgcf: {
       wallpaper: "builtin:tgcf:moonlit", // equals the factory default → dropped
       slogan: { zh: "自定标语", en: "custom" }, // differs → kept
+    }, openbmc: {
+      // factory-equal locale override: fresh objects can never be `===`, the
+      // compare must be structural (rehearsal finding, pre-1.0.0)
+      slogan: { zh: "察于未萌 · 治于未乱", en: "Govern before the storm" },
     } },
     library: {},
   }));
@@ -82,6 +86,8 @@ test("load-time normalization drops overrides equal to the factory default (v1.0
   const state = JSON.parse(readFileSync(join(dir, "state.json"), "utf8"));
   assert.deepEqual(state.skins.tgcf, { slogan: { zh: "自定标语", en: "custom" } },
     "default-equal override removed, real override kept");
+  assert.equal(state.skins.openbmc, undefined,
+    "factory-equal locale override dropped (structural comparison)");
   assert.equal(state.revision, 42, "the removal bumps the revision once");
   assert.equal(store.snapshot().mode, "normal", "normal path, not recovery");
 });

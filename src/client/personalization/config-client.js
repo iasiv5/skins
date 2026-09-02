@@ -29,7 +29,7 @@
  *     same-status refetches, whose silent swaps previously starved the UI.
  */
 
-import { defaultsFor } from "../../shared/personalization/catalog.js";
+import { defaultsFor, isSameOverrideValue } from "../../shared/personalization/catalog.js";
 
 const CHANNEL = "dsh-skins";
 const FETCH_TIMEOUT_MS = 3000;
@@ -277,7 +277,10 @@ export function createConfigClient(options = {}) {
     const composite = `${skinId} ${key}`;
     const storedOverride = snapshot.skins[skinId]?.[key];
     const previewed = previews.get(composite);
-    if (value === defaultsFor(skinId)[key]) {
+    // Structural comparison for the same reason as the store's load-time
+    // normalization: locale/colorScheme defaults are fresh objects per
+    // defaultsFor() call, so `===` never fires for them.
+    if (isSameOverrideValue(value, defaultsFor(skinId)[key])) {
       if (storedOverride === undefined && previewed === undefined) return;
       if (previewed === null) return; // delete op already armed
       return previewReset(skinId, key);

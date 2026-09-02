@@ -242,6 +242,22 @@ export function defaultsFor(skinId) {
   return values;
 }
 
+/** Structural equality for override values (v1.0.0 ruling "a value equal to
+ *  the factory default is not an override"): primitives compare by identity,
+ *  plain objects (locale / colorScheme scopes) key-by-key and recursively.
+ *  Defaults are rebuilt per defaultsFor() call, so reference equality can
+ *  never hold for objects — comparison must be structural. */
+export function isSameOverrideValue(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object"
+    || Array.isArray(a) || Array.isArray(b)) {
+    return false;
+  }
+  const keysA = Object.keys(a);
+  return keysA.length === Object.keys(b).length
+    && keysA.every((key) => Object.hasOwn(b, key) && isSameOverrideValue(a[key], b[key]));
+}
+
 // ---------------------------------------------------------------------------
 // Reference parsing
 // ---------------------------------------------------------------------------
