@@ -2,6 +2,8 @@
 
 > 以下步骤需要一台装好 1.0.0 候选构建的 DSH Web GUI。每步记录「实际结果」与证据路径；
 > 任何一步失败即停止发版。此清单为设计 §14/§13 手工 gate 的落地（评审 Y12）。
+>
+> 归档说明：1.0.0 当时生成的四张 `*-personalize.webp` 验收截图已在 1.0.1 发布整理中从当前树移除；旧 commit 仍保留其历史。未来 gate 证据默认写入 gitignored 的 `.artifacts/release-gates/v<version>/`，不再作为常驻文档资产入库。
 
 ## 准备
 
@@ -16,10 +18,10 @@
 - [ ] `node scripts/capture-previews.mjs --skin tgcf --gate` → 输出 `GATE PASSED`
       （断言：4 个齿轮键盘可达、面板粘连展开、Esc 整壳关闭、修改标语→自动保存→刷新后保持、
       恢复默认→保存→出厂标语「百无禁忌」复原、目标皮肤静态 favicon；截图含隐私门禁）
-      证据：终端输出 + `docs/assets/tgcf-personalize.webp`
+      证据：终端输出（当时截图见历史 commit，已移出当前树）
 - [ ] `node scripts/capture-previews.mjs --skin meirenzhi --gate` → `GATE PASSED`
       （恢复默认 → 出厂标语「风起凡尘 · 红颜问道」；掌天瓶 favicon）
-      证据：终端输出 + `docs/assets/meirenzhi-personalize.webp`
+      证据：终端输出（当时截图见历史 commit，已移出当前树）
 - [ ] `node scripts/capture-previews.mjs --skin openbmc --gate` → `GATE PASSED`
       （恢复默认 → 出厂标语「察于未萌 · 治于未乱」）证据：终端输出
 - [ ] `node scripts/capture-previews.mjs --skin uefi-harness --gate` → `GATE PASSED`
