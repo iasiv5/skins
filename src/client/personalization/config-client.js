@@ -331,16 +331,25 @@ export function createConfigClient(options = {}) {
    * retry); everything else about the request is identical.
    */
   function attemptUpload(bytes, file, displayName) {
+    // Own controller + timer instead of AbortSignal.timeout(): the built-in
+    // helper's timer is unref'd in Node, so a hung fetch would NOT keep the
+    // event loop alive (CI, Node 22: the upload tests drained the loop and
+    // the runner cancelled everything after them), and a 120s timer would
+    // linger per upload. Clearing it in `finally` keeps the wall-clock cap
+    // (see UPLOAD_TIMEOUT_MS) while leaving no stray handle behind.
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller === null ? null
+      : setTimeout(() => controller.abort(), uploadTimeoutMs);
     return request("/library", {
       method: "POST",
-      // The extended upload window (see UPLOAD_TIMEOUT_MS); request()'s
-      // short config-fetch timeout must never govern a 20MB body.
-      signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(uploadTimeoutMs) : undefined,
+      signal: controller === null ? undefined : controller.signal,
       headers: {
         "content-type": typeof file?.type === "string" && file.type !== "" ? file.type : "application/octet-stream",
         "x-filename": encodeURIComponent(displayName ?? file?.name ?? "wallpaper"),
       },
       body: bytes,
+    }).finally(() => {
+      if (timer !== null) clearTimeout(timer);
     });
   }
 
