@@ -304,6 +304,34 @@ test("single delete: busy in flight, outcome always surfaced, retry after failur
   assert.equal(delButtonsOf(failing)[0].props.disabled, false, "retry stays possible");
 });
 
+test("revision conflict renders its dedicated warning instead of the generic save failure", async () => {
+  const config = makeConfigClient({
+    status: "synced",
+    lastFlushCode: "REVISION_CONFLICT",
+    lastFlushError: "stale generic reason",
+  });
+  const panel = mountPanel({ skinId: "tgcf", status: "synced", config });
+  await tick();
+  const texts = textsOf(panel.tree());
+  assert.ok(texts.includes("personalization.saveConflict"));
+  assert.equal(texts.includes("personalization.saveFailed"), false);
+  assert.equal(texts.includes("stale generic reason"), false);
+});
+
+test("generic save failure renders only when no conflict code is present", async () => {
+  const config = makeConfigClient({
+    status: "synced",
+    lastFlushCode: null,
+    lastFlushError: "boom",
+  });
+  const panel = mountPanel({ skinId: "tgcf", status: "synced", config });
+  await tick();
+  const texts = textsOf(panel.tree());
+  assert.ok(texts.includes("personalization.saveFailed"));
+  assert.ok(texts.includes("boom"));
+  assert.equal(texts.includes("personalization.saveConflict"), false);
+});
+
 test("auto-save failure strip renders from lastFlushError and clears on edit (ADR-0003)", async () => {
   const config = makeConfigClient({ status: "synced" });
   const panel = mountPanel({ skinId: "tgcf", status: "synced", config });

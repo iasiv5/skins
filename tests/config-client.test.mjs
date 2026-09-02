@@ -296,7 +296,7 @@ test("409 revision conflict auto-refetches and retries once (ADR-0003)", async (
   const fetchImpl = makeFetch((index, url, init) => {
     if (init.method === "PATCH") {
       patches.push(JSON.parse(init.body));
-      if (patches.length === 1) return jsonResponse(409, { code: "IMPORT_CONFLICT", error: "stale" });
+      if (patches.length === 1) return jsonResponse(409, { code: "REVISION_CONFLICT", error: "stale" });
       return jsonResponse(200, { revision: 9 });
     }
     // Every GET after the conflict reports the moved-forward revision.
@@ -312,6 +312,163 @@ test("409 revision conflict auto-refetches and retries once (ADR-0003)", async (
   assert.equal(patches[0].baseRevision, 7, "first attempt rode the stale revision");
   assert.equal(patches[1].baseRevision, 8, "retry rides the fresh baseRevision");
   assert.equal(client.getState().dirtyCount, 0);
+  client.dispose();
+});
+
+test("exhausted revision-conflict retry surfaces a machine-readable failure until the next edit", async () => {
+  let revision = 7;
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      return jsonResponse(409, { code: "REVISION_CONFLICT", error: "stale" });
+    }
+    if (patchCount > 0) revision = 8;
+    return snapshotBody({ revision });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict" });
+  assert.equal(patchCount, 2);
+  assert.equal(client.getState().lastFlushCode, "REVISION_CONFLICT");
+  assert.equal(client.getState().lastFlushError, null);
+  assert.equal(client.getState().dirtyCount, 1);
+  client.preview("tgcf", "panelOpacity", 4);
+  assert.equal(client.getState().lastFlushCode, null);
+  assert.equal(client.getState().lastFlushError, null);
+  client.dispose();
+});
+
+test("STORE_RECOVERY_REQUIRED refetches recovery state without retrying PATCH", async () => {
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      return jsonResponse(409, { code: "STORE_RECOVERY_REQUIRED", error: "recover" });
+    }
+    if (patchCount > 0) return snapshotBody({ mode: "recovery", revision: 8, recovery: { configLost: true } });
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "recovery" });
+  assert.equal(patchCount, 1);
+  assert.equal(client.getState().mode, "recovery");
+  assert.equal(client.getState().lastFlushCode, null);
+  assert.equal(client.getState().lastFlushError, null);
+  client.dispose();
+});
+
+test("STORE_RECOVERY_REQUIRED surfaces its error when recovery refetch fails", async () => {
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      return jsonResponse(409, { code: "STORE_RECOVERY_REQUIRED", error: "recover first" });
+    }
+    return patchCount === 0 ? snapshotBody() : jsonResponse(500, { error: "offline" });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  assert.deepEqual(await client.flushNow(), {
+    flushed: 0,
+    blocked: "error",
+    errorMessage: "recover first",
+  });
+  assert.equal(patchCount, 1);
+  assert.equal(client.getState().lastFlushCode, null);
+  assert.equal(client.getState().lastFlushError, "recover first");
+  client.dispose();
+});
+
+test("unknown 409 codes fail loudly without retry", async () => {
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      return jsonResponse(409, { code: "SOMETHING_ELSE", error: "boom" });
+    }
+    return snapshotBody();
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "error", errorMessage: "boom" });
+  assert.equal(patchCount, 1);
+  assert.equal(client.getState().lastFlushCode, null);
+  assert.equal(client.getState().lastFlushError, "boom");
+  client.dispose();
+});
+
+test("queued flush failures overwrite conflict state without breaking failure-field exclusivity", async () => {
+  let releaseFirstPatch;
+  const firstPatchGate = new Promise((resolve) => { releaseFirstPatch = resolve; });
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      if (patchCount === 1) return firstPatchGate.then(() => jsonResponse(409, { code: "REVISION_CONFLICT" }));
+      if (patchCount === 2) return jsonResponse(409, { code: "REVISION_CONFLICT" });
+      return jsonResponse(500, { error: "HTTP 500" });
+    }
+    return snapshotBody({ revision: patchCount === 0 ? 7 : 8 });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  const firstFlush = client.flushNow();
+  await Promise.resolve();
+  client.preview("tgcf", "panelOpacity", 4);
+  const secondFlush = client.flushNow();
+  releaseFirstPatch();
+  assert.deepEqual(await firstFlush, { flushed: 0, blocked: "conflict" });
+  assert.deepEqual(await secondFlush, { flushed: 0, blocked: "error", errorMessage: "HTTP 500" });
+  assert.equal(client.getState().lastFlushCode, null);
+  assert.equal(client.getState().lastFlushError, "HTTP 500");
+  client.dispose();
+});
+
+test("revision-conflict refetch failure does not send a blind retry", async () => {
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      return jsonResponse(409, { code: "REVISION_CONFLICT", error: "stale" });
+    }
+    return patchCount === 0 ? snapshotBody() : jsonResponse(500, { error: "offline" });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "offline" });
+  assert.equal(patchCount, 1);
+  assert.equal(client.getState().status, "offline-failed");
+  assert.equal(client.getState().dirtyCount, 1);
+  assert.equal(client.getState().lastFlushCode, null);
+  assert.equal(client.getState().lastFlushError, null);
+  client.dispose();
+});
+
+test("revision-conflict refetch with the same revision does not retry", async () => {
+  let patchCount = 0;
+  const fetchImpl = makeFetch((index, url, init) => {
+    if (init.method === "PATCH") {
+      patchCount += 1;
+      return jsonResponse(409, { code: "REVISION_CONFLICT", error: "stale" });
+    }
+    return snapshotBody({ revision: 7 });
+  });
+  const client = flushingClient(fetchImpl);
+  await client.boot();
+  client.preview("tgcf", "panelOpacity", 3);
+  assert.deepEqual(await client.flushNow(), { flushed: 0, blocked: "conflict" });
+  assert.equal(patchCount, 1);
+  assert.equal(client.getState().dirtyCount, 1);
+  assert.equal(client.getState().lastFlushCode, "REVISION_CONFLICT");
+  assert.equal(client.getState().lastFlushError, null);
   client.dispose();
 });
 

@@ -433,25 +433,28 @@ export function createPersonalizationStore(options = {}) {
 
   // -- config operations (field-level ops, design §2/§4) --------------------
 
-  async function applyOperations({ operations }) {
+  async function applyOperations({ baseRevision, operations }) {
     init();
     requireNormal("配置写入");
-    if (!Array.isArray(operations) || operations.length === 0 || operations.length > 64) {
-      throw codedError("INVALID_CONFIG", "operations 必须是 1–64 个元素的数组");
-    }
-    for (const operation of operations) {
-      if (operation === null || typeof operation !== "object") {
-        throw codedError("INVALID_CONFIG", "operation 必须是对象");
-      }
-      const { op, skinId, key } = operation;
-      if (op !== "set" && op !== "delete") throw codedError("INVALID_CONFIG", "op 必须是 set 或 delete");
-      if (getField(skinId, key) === null) {
-        throw codedError("INVALID_CONFIG", `未知字段 ${skinId}.${key}`);
-      }
-    }
-    // Draft + validation run INSIDE the serialized queue so interleaved
-    // mutations always build on the newest committed state.
+    // Revision, structure, draft, and value validation all run INSIDE the
+    // serialized queue so interleaved mutations cannot bypass the precondition.
     return enqueue(() => {
+      if (!Number.isInteger(baseRevision) || baseRevision < 0 || baseRevision !== state.revision) {
+        throw codedError("REVISION_CONFLICT", "配置已被其他会话修改（修订号过期），请刷新后重试");
+      }
+      if (!Array.isArray(operations) || operations.length === 0 || operations.length > 64) {
+        throw codedError("INVALID_CONFIG", "operations 必须是 1–64 个元素的数组");
+      }
+      for (const operation of operations) {
+        if (operation === null || typeof operation !== "object") {
+          throw codedError("INVALID_CONFIG", "operation 必须是对象");
+        }
+        const { op, skinId, key } = operation;
+        if (op !== "set" && op !== "delete") throw codedError("INVALID_CONFIG", "op 必须是 set 或 delete");
+        if (getField(skinId, key) === null) {
+          throw codedError("INVALID_CONFIG", `未知字段 ${skinId}.${key}`);
+        }
+      }
       const draft = structuredClone(state);
       const provider = metaProviderFactory(draft.library);
       for (const operation of operations) {

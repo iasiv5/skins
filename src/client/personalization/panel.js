@@ -383,9 +383,14 @@ export function createPersonalizationPanel({ jsx, react, configClient, tr, built
         jsx("span", { children: tr("personalization.status.unsupported") }),
       ] }));
     }
-    // Auto-save failure strip (ADR-0003): the client publishes lastFlushError
-    // (server reason or an unresolved conflict); the next edit clears it.
-    if (state.lastFlushError) {
+    // Auto-save failure strips (ADR-0003): exhausted revision conflicts use
+    // lastFlushCode; ordinary server failures use lastFlushError. The next
+    // edit clears both fields.
+    if (state.lastFlushCode === "REVISION_CONFLICT") {
+      statusCluster.push(jsx("div", { key: "save-conflict", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
+        jsx("span", { children: tr("personalization.saveConflict") }),
+      ] }));
+    } else if (state.lastFlushError) {
       statusCluster.push(jsx("div", { key: "save-error", className: "dsh-skins-pz-status dsh-skins-pz-warn", children: [
         jsx("span", { children: tr("personalization.saveFailed") }),
         jsx("div", { className: "dsh-skins-pz-muted", children: state.lastFlushError }),

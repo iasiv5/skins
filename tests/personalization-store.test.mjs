@@ -63,7 +63,10 @@ function webpAnimated() {
 }
 
 function setOverride(store, skinId, key, value) {
-  return store.applyOperations({ operations: [{ op: "set", skinId, key, value }] });
+  return store.applyOperations({
+    baseRevision: store.snapshot().revision,
+    operations: [{ op: "set", skinId, key, value }],
+  });
 }
 
 test("load-time normalization drops overrides equal to the factory default (v1.0.0 ruling)", async () => {
@@ -162,7 +165,10 @@ test("field operations set, delete and bump the revision atomically", async () =
   assert.equal(snapshot.skins.tgcf.panelOpacity, 55);
   assert.equal(snapshot.revision, 2);
 
-  await store.applyOperations({ operations: [{ op: "delete", skinId: "tgcf", key: "panelOpacity" }] });
+  await store.applyOperations({
+    baseRevision: store.snapshot().revision,
+    operations: [{ op: "delete", skinId: "tgcf", key: "panelOpacity" }],
+  });
   snapshot = store.snapshot();
   assert.equal(snapshot.skins.tgcf.panelOpacity, undefined);
   assert.equal(snapshot.skins.tgcf.slogan.zh, "一");
@@ -172,6 +178,7 @@ test("invalid operations reject the whole batch without touching state", async (
   const store = makeStore(tempDir());
   await setOverride(store, "tgcf", "panelOpacity", 55);
   await assert.rejects(store.applyOperations({
+    baseRevision: store.snapshot().revision,
     operations: [
       { op: "set", skinId: "tgcf", key: "blur", value: 5 },
       { op: "set", skinId: "tgcf", key: "panelOpacity", value: 999 },
@@ -186,11 +193,17 @@ test("invalid operations reject the whole batch without touching state", async (
 test("unknown fields and unknown skins are rejected", async () => {
   const store = makeStore(tempDir());
   await assert.rejects(
-    store.applyOperations({ operations: [{ op: "set", skinId: "tgcf", key: "nope", value: 1 }] }),
+    store.applyOperations({
+      baseRevision: store.snapshot().revision,
+      operations: [{ op: "set", skinId: "tgcf", key: "nope", value: 1 }],
+    }),
     (e) => e.code === "INVALID_CONFIG",
   );
   await assert.rejects(
-    store.applyOperations({ operations: [{ op: "set", skinId: "ghost", key: "blur", value: 1 }] }),
+    store.applyOperations({
+      baseRevision: store.snapshot().revision,
+      operations: [{ op: "set", skinId: "ghost", key: "blur", value: 1 }],
+    }),
     (e) => e.code === "INVALID_CONFIG",
   );
 });
@@ -208,7 +221,10 @@ test("legacy skins take slogan and panelOpacity overrides and survive reload (AD
 
   // Out-of-range values are rejected by the write-path field gate.
   await assert.rejects(
-    store.applyOperations({ operations: [{ op: "set", skinId: "openbmc", key: "panelOpacity", value: 101 }] }),
+    store.applyOperations({
+      baseRevision: store.snapshot().revision,
+      operations: [{ op: "set", skinId: "openbmc", key: "panelOpacity", value: 101 }],
+    }),
     (e) => e.code === "INVALID_CONFIG",
   );
   assert.equal(store.snapshot().skins.openbmc.panelOpacity, 80, "rejected write leaves state untouched");
@@ -453,15 +469,138 @@ test("fault injection: a failed state commit after a successful blob write recla
   assert.equal(readdirSync(join(dir, "assets")).length, 0, "orphan blob reclaimed");
 });
 
-test("interleaved mutations from two clients never lose each other's fields", async () => {
+test("stale baseRevision rejects without changing revision or overrides", async () => {
   const store = makeStore(tempDir());
-  const first = setOverride(store, "tgcf", "slogan", { zh: "一", en: "One" });
-  const second = setOverride(store, "openbmc", "wallpaper", "builtin:openbmc:art");
-  await Promise.all([first, second]);
-  const snapshot = store.snapshot();
+  const before = store.snapshot();
+  await assert.rejects(store.applyOperations({
+    baseRevision: before.revision + 5,
+    operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }],
+  }), (error) => error.code === "REVISION_CONFLICT");
+  const after = store.snapshot();
+  assert.equal(after.revision, before.revision);
+  assert.deepEqual(after.skins, before.skins);
+});
+
+test("matching baseRevision commits and increments revision once", async () => {
+  const store = makeStore(tempDir());
+  const baseRevision = store.snapshot().revision;
+  const result = await store.applyOperations({
+    baseRevision,
+    operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }],
+  });
+  assert.equal(result.revision, baseRevision + 1);
+  assert.equal(store.snapshot().revision, baseRevision + 1);
+  assert.equal(store.snapshot().skins.tgcf.panelOpacity, 55);
+});
+
+test("missing and invalid baseRevision values reject as revision conflicts", async () => {
+  const store = makeStore(tempDir());
+  for (const baseRevision of [undefined, -1, 7.5]) {
+    await assert.rejects(store.applyOperations({
+      baseRevision,
+      operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }],
+    }), (error) => error.code === "REVISION_CONFLICT");
+  }
+  assert.equal(store.snapshot().revision, 0);
+  assert.deepEqual(store.snapshot().skins, {});
+});
+
+test("missing baseRevision outranks invalid empty operations", async () => {
+  const store = makeStore(tempDir());
+  await assert.rejects(
+    store.applyOperations({ operations: [] }),
+    (error) => error.code === "REVISION_CONFLICT",
+  );
+});
+
+test("recovery mode outranks missing baseRevision and invalid operations", async () => {
+  const dir = tempDir();
+  const seed = makeStore(dir);
+  await seed.uploadAsset(pngBytes(), { displayName: "w" });
+  writeFileSync(join(dir, "state.json"), "broken");
+  const recovered = makeStore(dir);
+  await assert.rejects(
+    recovered.applyOperations({ operations: [] }),
+    (error) => error.code === "STORE_RECOVERY_REQUIRED",
+  );
+});
+
+test("unsupported mode outranks missing baseRevision and invalid operations", async () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, "state.json"), JSON.stringify({
+    configVersion: 99, revision: 5, skins: {}, library: {},
+  }));
+  const unsupported = makeStore(dir);
+  await assert.rejects(
+    unsupported.applyOperations({ operations: [] }),
+    (error) => error.code === "STORE_READONLY",
+  );
+});
+
+test("revision conflicts perform no state-file writes or renames", async () => {
+  const dir = tempDir();
+  let writes = 0;
+  let renames = 0;
+  const store = makeStore(dir, {
+    writeFileSync: (...args) => {
+      writes += 1;
+      return fWrite(...args);
+    },
+    renameSync: (...args) => {
+      renames += 1;
+      return fRename(...args);
+    },
+  });
+  await setOverride(store, "tgcf", "panelOpacity", 55);
+  writes = 0;
+  renames = 0;
+  const before = store.snapshot();
+  await assert.rejects(store.applyOperations({
+    baseRevision: before.revision - 1,
+    operations: [{ op: "set", skinId: "tgcf", key: "blur", value: 5 }],
+  }), (error) => error.code === "REVISION_CONFLICT");
+  assert.equal(writes, 0);
+  assert.equal(renames, 0);
+  assert.equal(store.snapshot().revision, before.revision);
+  assert.deepEqual(store.snapshot().skins, before.skins);
+});
+
+test("interleaved mutations from the same base conflict before retry", async () => {
+  const store = makeStore(tempDir());
+  const base = store.snapshot().revision;
+  const requests = [
+    {
+      baseRevision: base,
+      operations: [{ op: "set", skinId: "tgcf", key: "slogan", value: { zh: "一", en: "One" } }],
+    },
+    {
+      baseRevision: base,
+      operations: [{ op: "set", skinId: "openbmc", key: "wallpaper", value: "builtin:openbmc:art" }],
+    },
+  ];
+  const first = store.applyOperations(requests[0]);
+  const second = store.applyOperations(requests[1]);
+  const settled = await Promise.allSettled([first, second]);
+  const fulfilled = settled.filter((result) => result.status === "fulfilled");
+  const rejected = settled.filter((result) => result.status === "rejected");
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, "REVISION_CONFLICT");
+
+  let snapshot = store.snapshot();
+  assert.equal(snapshot.revision, base + 1);
+  const rejectedIndex = settled.findIndex((result) => result.status === "rejected");
+  if (rejectedIndex === 0) assert.equal(snapshot.skins.tgcf?.slogan, undefined);
+  else assert.equal(snapshot.skins.openbmc?.wallpaper, undefined);
+
+  await store.applyOperations({
+    ...requests[rejectedIndex],
+    baseRevision: snapshot.revision,
+  });
+  snapshot = store.snapshot();
   assert.deepEqual(snapshot.skins.tgcf.slogan, { zh: "一", en: "One" });
   assert.equal(snapshot.skins.openbmc.wallpaper, "builtin:openbmc:art");
-  assert.equal(snapshot.revision, 2);
+  assert.equal(snapshot.revision, base + 2);
 });
 
 // ---- review-round regressions (data safety, concurrency, crash windows) ----

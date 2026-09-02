@@ -109,10 +109,62 @@ test("PATCH rejects invalid operations with INVALID_CONFIG and no partial writes
     method: "PATCH",
     url: "/dsh-skins/config",
     headers: { ...TRUSTED, "content-type": "application/json" },
-    body: { operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 999 }] },
+    body: { baseRevision: 0, operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 999 }] },
   }));
   assert.equal(state.status, 400);
   assert.equal(JSON.parse(state.body).code, "INVALID_CONFIG");
+});
+
+test("PATCH maps stale revisions to 409 and leaves the store retryable", async () => {
+  const { call, store } = makeHarness();
+  const operations = [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }];
+  const stale = await call(makeRequest({
+    method: "PATCH",
+    url: "/dsh-skins/config",
+    headers: { ...TRUSTED, "content-type": "application/json" },
+    body: { baseRevision: 999, operations },
+  }));
+  assert.equal(stale.status, 409);
+  assert.equal(JSON.parse(stale.body).code, "REVISION_CONFLICT");
+  assert.equal(store.snapshot().revision, 0);
+
+  const retry = await call(makeRequest({
+    method: "PATCH",
+    url: "/dsh-skins/config",
+    headers: { ...TRUSTED, "content-type": "application/json" },
+    body: { baseRevision: store.snapshot().revision, operations },
+  }));
+  assert.equal(retry.status, 200);
+  assert.equal(JSON.parse(retry.body).revision, 1);
+});
+
+test("PATCH maps a missing baseRevision to REVISION_CONFLICT 409", async () => {
+  const { call } = makeHarness();
+  const state = await call(makeRequest({
+    method: "PATCH",
+    url: "/dsh-skins/config",
+    headers: { ...TRUSTED, "content-type": "application/json" },
+    body: { operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }] },
+  }));
+  assert.equal(state.status, 409);
+  assert.equal(JSON.parse(state.body).code, "REVISION_CONFLICT");
+});
+
+test("PATCH maps negative and fractional baseRevision values to REVISION_CONFLICT 409", async () => {
+  for (const baseRevision of [-1, 7.5]) {
+    const { call } = makeHarness();
+    const state = await call(makeRequest({
+      method: "PATCH",
+      url: "/dsh-skins/config",
+      headers: { ...TRUSTED, "content-type": "application/json" },
+      body: {
+        baseRevision,
+        operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 55 }],
+      },
+    }));
+    assert.equal(state.status, 409);
+    assert.equal(JSON.parse(state.body).code, "REVISION_CONFLICT");
+  }
 });
 
 test("upload round-trips through the store and reports 201", async () => {
@@ -178,7 +230,7 @@ test("malformed x-filename encoding is rejected with FILENAME_INVALID", async ()
 });
 
 test("DELETE validates the suffix, deletes and reports affected skins", async () => {
-  const { call } = makeHarness();
+  const { call, store } = makeHarness();
   const upload = await call(makeRequest({
     method: "POST",
     url: "/dsh-skins/library",
@@ -190,7 +242,10 @@ test("DELETE validates the suffix, deletes and reports affected skins", async ()
     method: "PATCH",
     url: "/dsh-skins/config",
     headers: { ...TRUSTED, "content-type": "application/json" },
-    body: { operations: [{ op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id }] },
+    body: {
+      baseRevision: store.snapshot().revision,
+      operations: [{ op: "set", skinId: "tgcf", key: "wallpaper", value: asset.id }],
+    },
   }));
 
   const bad = await call(makeRequest({ method: "DELETE", url: "/dsh-skins/library/../etc/passwd", headers: TRUSTED }));
@@ -271,7 +326,7 @@ test("readonly stores surface STORE_READONLY as 409", async () => {
     method: "PATCH",
     url: "/dsh-skins/config",
     headers: { ...TRUSTED, "content-type": "application/json" },
-    body: { operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 1 }] },
+    body: { baseRevision: 5, operations: [{ op: "set", skinId: "tgcf", key: "panelOpacity", value: 1 }] },
   }), response);
   assert.equal(response.state.status, 409);
   assert.equal(JSON.parse(response.state.body).code, "STORE_READONLY");

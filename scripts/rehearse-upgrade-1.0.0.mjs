@@ -65,6 +65,7 @@ console.log("== B: 1.0.0-dev intermediate state → 1.0.0 load-time normalizatio
   );
   await writer.uploadAsset(png1x1, { displayName: "演练壁纸", declaredMime: "image/png" });
   await writer.applyOperations({
+    baseRevision: writer.snapshot().revision,
     operations: [{ op: "set", skinId: "tgcf", key: "slogan", value: { zh: "实验标语", en: "Rehearsal slogan" } }],
   });
   const before = writer.snapshot();

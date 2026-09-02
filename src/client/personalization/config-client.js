@@ -1,6 +1,6 @@
 /**
  * Config client — the browser-side state machine for personalization
- * (design §7.1, explicit-save model per ADR-0001). Four states:
+ * (design §7.1, write-through auto-save per ADR-0003). Four states:
  *
  *   loading               initial fetch in flight (writes forbidden)
  *   synced                snapshot in hand; 保存 (flushNow) allowed
@@ -17,14 +17,14 @@
  *   - dirty preview fields are never overwritten by a late fetch (R3);
  *   - writes are serialized in order; a stale write response cannot roll a
  *     newer local state back (sequence checked before applying results);
- *   - a revision-conflict 409 refetches the fresh snapshot (previews stay
- *     dirty) so the next 保存 retries on the new baseRevision; a
- *     STORE_READONLY 409 downgrades to read-only with no refetch;
+ *   - a REVISION_CONFLICT 409 refetches and retries once only when a newer
+ *     normal snapshot lands; failed/unchanged refetches never blind-retry,
+ *     and unchanged normal snapshots surface the conflict instead;
+ *     STORE_READONLY downgrades to read-only with no refetch;
  *   - writes emit `dsh-skins:config-changed` + a BroadcastChannel ping so
  *     other tabs refetch; window focus refetch is the fallback path;
- *   - a revision conflict auto-refetches and retries once; only a conflict
- *     that survives the retry (or a non-409 failure) lands in
- *     lastFlushError for the panel's warning strip;
+ *   - retry exhaustion or an unchanged normal refetch lands in lastFlushCode;
+ *     ordinary failures land in the mutually exclusive lastFlushError;
  *   - every applied snapshot emits to local subscribers — including
  *     same-status refetches, whose silent swaps previously starved the UI.
  */
@@ -60,8 +60,14 @@ export function createConfigClient(options = {}) {
   let fetchGeneration = 0;
   let disposed = false;
   let writeChain = Promise.resolve();
-  let lastFlushError = null; // surfaced via publicState; cleared by the next edit or successful flush
+  let lastFlushCode = null;
+  let lastFlushError = null;
   let channel = null;
+
+  function setFlushFailure(code, message) {
+    lastFlushCode = code;
+    lastFlushError = message;
+  }
 
   // -- plumbing --------------------------------------------------------------
 
@@ -81,6 +87,7 @@ export function createConfigClient(options = {}) {
       references: snapshot.references ?? {},
       recovery: snapshot.recovery,
       quota: snapshot.quota,
+      lastFlushCode,
       lastFlushError,
       dirtyCount: previews.size,
     };
@@ -198,9 +205,9 @@ export function createConfigClient(options = {}) {
         if (disposed) return { flushed: 0, blocked: "disposed" };
         const blocked = gateWrites();
         if (blocked !== null) return { flushed: 0, blocked };
-        // ADR-0003: a revision conflict auto-resolves — refetch the fresh
-        // snapshot and retry once on the new baseRevision. Only a conflict
-        // that survives the retry surfaces to the user.
+        // ADR-0003: retry once only after a conflict refetch has actually
+        // applied a newer normal-mode snapshot.
+        const attemptedRevision = snapshot.revision;
         for (let attempt = 0; attempt < 2; attempt += 1) {
           const response = await request("/config", {
             method: "PATCH",
@@ -210,12 +217,60 @@ export function createConfigClient(options = {}) {
           if (disposed) return { flushed: 0 };
           if (response.status === 409) {
             const conflictBody = await response.json().catch(() => null);
-            if (conflictBody?.code === "STORE_READONLY") {
+            const code = conflictBody?.code;
+            const errorMessage = conflictBody?.error ?? "HTTP 409";
+            if (code === "STORE_READONLY") {
+              setFlushFailure(null, null);
               setStatus("unsupported-readonly");
-              return { flushed: 0, blocked: "conflict", errorMessage: conflictBody.error ?? "" };
+              return { flushed: 0, blocked: "conflict", errorMessage: conflictBody?.error ?? "" };
             }
-            await refetch(); // fresh baseRevision; previews stay dirty
-            continue;
+            if (code === "REVISION_CONFLICT") {
+              if (attempt === 1) {
+                setFlushFailure("REVISION_CONFLICT", null);
+                emit();
+                return { flushed: 0, blocked: "conflict" };
+              }
+              const refreshed = await refetch();
+              const mayRetry = refreshed.status === "synced"
+                && refreshed.mode === "normal"
+                && refreshed.revision !== attemptedRevision;
+              if (mayRetry) continue;
+
+              if (refreshed.mode === "recovery") {
+                setFlushFailure(null, null);
+                emit();
+                return { flushed: 0, blocked: "recovery" };
+              }
+              if (refreshed.status === "offline-failed") {
+                setFlushFailure(null, null);
+                emit();
+                return { flushed: 0, blocked: "offline" };
+              }
+              if (refreshed.status === "unsupported-readonly") {
+                setFlushFailure(null, null);
+                emit();
+                return { flushed: 0, blocked: "unsupported" };
+              }
+              // Still synced+normal but no new revision landed: no other UI
+              // state surfaces this, so ADR-0003 requires a visible conflict.
+              setFlushFailure("REVISION_CONFLICT", null);
+              emit();
+              return { flushed: 0, blocked: "conflict" };
+            }
+            if (code === "STORE_RECOVERY_REQUIRED") {
+              const refreshed = await refetch();
+              if (refreshed.mode === "recovery") {
+                setFlushFailure(null, null);
+                emit();
+                return { flushed: 0, blocked: "recovery" };
+              }
+              setFlushFailure(null, errorMessage);
+              emit();
+              return { flushed: 0, blocked: "error", errorMessage };
+            }
+            setFlushFailure(null, errorMessage);
+            emit();
+            return { flushed: 0, blocked: "error", errorMessage };
           }
           if (!response.ok) {
             // Keep the previews dirty so a later edit can retry — and NAME
@@ -223,7 +278,7 @@ export function createConfigClient(options = {}) {
             // report: the stale-host BAD_SHAPE stayed invisible for days).
             const errorBody = await response.json().catch(() => null);
             const errorMessage = errorBody?.error ?? `HTTP ${response.status}`;
-            lastFlushError = errorMessage;
+            setFlushFailure(null, errorMessage);
             emit();
             return { flushed: 0, blocked: "error", errorMessage };
           }
@@ -232,7 +287,7 @@ export function createConfigClient(options = {}) {
           for (const [composite, value] of intent) {
             if (previews.get(composite) === value) previews.delete(composite);
           }
-          lastFlushError = null;
+          setFlushFailure(null, null);
           // Resync from the Host rather than trusting a racing local snapshot:
           // a refetch issued mid-flight may otherwise resurrect pre-write state.
           await refetch();
@@ -243,6 +298,8 @@ export function createConfigClient(options = {}) {
       } catch {
         // The chain itself must stay fulfilled: one network failure may
         // never poison subsequent flushes (previews stay dirty for retry).
+        setFlushFailure(null, null);
+        emit();
         return { flushed: 0, blocked: "error" };
       }
     });
@@ -263,7 +320,7 @@ export function createConfigClient(options = {}) {
 
   // -- public API ------------------------------------------------------------
 
-  /** Record an unsaved edit: projects locally, persists nothing (ADR-0001). */
+  /** Record a local edit, project it immediately, and arm ADR-0003 auto-save. */
   function preview(skinId, key, value) {
     // A value equal to the field's factory default is NOT an override
     // (v1.0.0 ruling — field report: clicking the default wallpaper thumb
@@ -287,7 +344,7 @@ export function createConfigClient(options = {}) {
     }
     if (effectiveOverrides(skinId)[key] === value) return;
     previews.set(composite, value);
-    lastFlushError = null; // a fresh edit always clears the failure strip
+    setFlushFailure(null, null); // a fresh edit always clears the failure strip
     scheduleFlush();
     emit();
   }
@@ -295,7 +352,7 @@ export function createConfigClient(options = {}) {
   /** Record an unsaved reset-to-default (a delete op) for the field. */
   function previewReset(skinId, key) {
     previews.set(`${skinId} ${key}`, null);
-    lastFlushError = null;
+    setFlushFailure(null, null);
     scheduleFlush();
     emit();
   }
